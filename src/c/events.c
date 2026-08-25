@@ -13,7 +13,9 @@ typedef struct {
 static const EventDef s_defs[EV_COUNT] = {
   [EV_BIO] = {
     "BIOSIGNATURE",
-    "Secondary scan of %s returns organized emission. Pre-industrial. They are not aware of us.",
+    // Two substitutions: body name, then the stage readout. rebuild_panel
+    // special-cases this one -- every other def takes the name alone.
+    "Secondary scan of %s returns a biological signal. %s",
     { "Harvest anyway", "Leave the body", "Monitor and continue" }, 3, false, true },
 
   [EV_SPACEFLIGHT] = {
@@ -142,8 +144,13 @@ static void rebuild_panel(void) {
   uint8_t ev = (uint8_t)g.active_event;
   const EventDef *d = &s_defs[ev];
 
-  if (d->needs_body) snprintf(s_text, sizeof(s_text), d->text, g.bodies[g.active_target].name);
-  else               snprintf(s_text, sizeof(s_text), "%s", d->text);
+  if (ev == EV_BIO)
+    snprintf(s_text, sizeof(s_text), d->text, g.bodies[g.active_target].name,
+             life_readout(g.bodies[g.active_target].life));
+  else if (d->needs_body)
+    snprintf(s_text, sizeof(s_text), d->text, g.bodies[g.active_target].name);
+  else
+    snprintf(s_text, sizeof(s_text), "%s", d->text);
 
   s_visible_n = 0;
   for (uint8_t c = 0; c < d->choice_count; c++)
@@ -240,8 +247,10 @@ static void apply(uint8_t ev, uint8_t c, uint8_t t) {
         game_log("T+%lu %s left intact. Yield forfeited.", (unsigned long)g.cycle, b->name);
       } else {
         b->monitored = true;
-        events_schedule(EV_SPACEFLIGHT, t, g.cycle + 180 + (rand() % 160));
-        game_log("T+%lu %s under observation.", (unsigned long)g.cycle, b->name);
+        // How much monitoring costs depends on how far along they already are.
+        uint32_t d = life_orbit_delay(b->life);
+        if (d > 0) events_schedule(EV_SPACEFLIGHT, t, g.cycle + d);
+        game_log("T+%lu %s observed. %s.", (unsigned long)g.cycle, b->name, life_name(b->life));
       }
       break;
 

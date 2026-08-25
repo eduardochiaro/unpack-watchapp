@@ -2,11 +2,32 @@
 #include "game.h"
 #include "events.h"
 
+// The HUD band and its action progress bar. Emery and gabbro have the pixels for
+// a chunkier bar, and the band grows to keep it clear of the status line.
+#if PBL_DISPLAY_WIDTH >= 200
+#define HUD_H         46
+#define BAR_H          8
+#else
 #define HUD_H         38
+#define BAR_H          3
+#endif
 #define ROW_H         34
+#define ROOT_PAD       5     // main-menu rows sit this far below their cell top
+// The "UNPACK" band above the splash art. Wide screens have the room for a
+// bigger face, so they get one and a taller band to sit in.
+#if PBL_DISPLAY_WIDTH >= 200
+#define TITLE_FONT    FONT_KEY_GOTHIC_24_BOLD
+#define TITLE_H       34
+#define TITLE_PAD      6
+#else
+#define TITLE_FONT    FONT_KEY_GOTHIC_14_BOLD
+#define TITLE_H       21
+#define TITLE_PAD      4
+#endif
 
 static Window *s_menu_window, *s_main_window, *s_event_window, *s_ledger_window;
-static Layer *s_hud_layer, *s_event_layer;
+static Layer *s_hud_layer, *s_event_layer, *s_masthead;
+static GBitmap *s_splash;
 static MenuLayer *s_root_menu, *s_menu;
 static ScrollLayer *s_scroll;
 static TextLayer *s_ledger_text;
@@ -19,13 +40,14 @@ static uint8_t s_event_sel;
 static uint32_t s_struct_sig;
 static char s_ledger[LOG_MAX * (LOG_LEN + 1) + 8];
 
-static GFont s_f14, s_f14b;
+static GFont s_f14, s_f14b, s_title_font;
 
 typedef struct { ActionKind act; } OpRow;
-static OpRow s_ops[6];
+static OpRow s_ops[8];
 static uint8_t s_ops_n;
 
 static void ui_show_ledger(void);
+static void ui_show_guide(void);
 static void ui_show_event(void);
 
 // ---- session persistence ---------------------------------------------------
@@ -33,7 +55,7 @@ static void ui_show_event(void);
 // is written as a run of chunks. The meta key is written last and validated
 // first, so a half-finished write can never be mistaken for a save.
 
-#define SAVE_VERSION   1
+#define SAVE_VERSION   2   // Body gained a life stage; v1 blobs are not readable
 #define KEY_META       0
 #define KEY_CHUNK_BASE 1
 #define SAVE_CHUNK     256
@@ -103,15 +125,17 @@ static GColor col_level(int16_t v, int16_t warn, int16_t crit) {
 
 // ---- shared cell drawing ---------------------------------------------------
 
-static void draw_cell(GContext *ctx, const Layer *cell, const char *title, const char *sub) {
+// `pad` is dead space above the title, for rows that want to sit lower in the cell.
+static void draw_cell(GContext *ctx, const Layer *cell, const char *title, const char *sub,
+                      int16_t pad) {
   GRect b = layer_get_bounds(cell);
   bool hl = menu_cell_layer_is_highlighted(cell);
   const GTextAlignment al = PBL_IF_ROUND_ELSE(GTextAlignmentCenter, GTextAlignmentLeft);
 
   graphics_context_set_text_color(ctx, hl ? GColorBlack : col_fg());
-  graphics_draw_text(ctx, title, s_f14b, GRect(4, -3, b.size.w - 8, 18),
+  graphics_draw_text(ctx, title, s_f14b, GRect(4, pad - 3, b.size.w - 8, 18),
                      GTextOverflowModeTrailingEllipsis, al, NULL);
-  graphics_draw_text(ctx, sub, s_f14, GRect(4, 13, b.size.w - 8, 18),
+  graphics_draw_text(ctx, sub, s_f14, GRect(4, pad + 13, b.size.w - 8, 18),
                      GTextOverflowModeTrailingEllipsis, al, NULL);
 }
 
@@ -132,6 +156,7 @@ static void build_ops(void) {
   s_ops[s_ops_n++].act = ACT_BUILD_WORKER;
   s_ops[s_ops_n++].act = ACT_LAUNCH;
   s_ops[s_ops_n++].act = ACT_LOG;
+  s_ops[s_ops_n++].act = ACT_GUIDE;
 }
 
 // Cheap signature of everything that changes the *shape* of the menu.
@@ -172,16 +197,17 @@ static void hud_update(Layer *layer, GContext *ctx) {
                      GTextOverflowModeTrailingEllipsis, al, NULL);
 
   // Progress bar for the running action; a thin rule when idle.
-  int16_t bx = pad, bw = b.size.w - 2 * pad, by = b.size.h - 4;
+  int16_t bx = pad, bw = b.size.w - 2 * pad, by = b.size.h - BAR_H - 5;
   graphics_context_set_fill_color(ctx, col_fg());
   if (g.phase == PHASE_ACTION && g.action_total > 0) {
     uint16_t done = g.action_total - g.action_left;
     graphics_context_set_stroke_color(ctx, col_fg());
-    graphics_draw_rect(ctx, GRect(bx, by, bw, 3));
+    graphics_draw_rect(ctx, GRect(bx, by, bw, BAR_H));
     graphics_context_set_fill_color(ctx, col_accent());
-    graphics_fill_rect(ctx, GRect(bx, by, (int16_t)((bw * done) / g.action_total), 3), 0, GCornerNone);
+    graphics_fill_rect(ctx, GRect(bx, by, (int16_t)((bw * done) / g.action_total), BAR_H),
+                       0, GCornerNone);
   } else {
-    graphics_fill_rect(ctx, GRect(bx, by + 1, bw, 1), 0, GCornerNone);
+    graphics_fill_rect(ctx, GRect(bx, by + BAR_H / 2, bw, 1), 0, GCornerNone);
   }
 }
 
@@ -241,12 +267,17 @@ static void op_row_text(ActionKind k, char *title, size_t tn, char *sub, size_t 
       snprintf(title, tn, "Probe + launch");
       snprintf(sub, sn, "%dM %dP %dW - %d cyc", game_cost_mat(k), game_cost_pow(k), LAUNCH_WORKERS, game_duration(k, 0));
       break;
+    case ACT_GUIDE:
+      snprintf(title, tn, "Guide");
+      snprintf(sub, sn, "what the readouts mean");
+      break;
     default:
       snprintf(title, tn, "Mission log");
       snprintf(sub, sn, "%d entries", g.log_count);
       break;
   }
-  if (k != ACT_LOG && !game_affordable(k, 0)) {
+  // The two reading screens cost nothing, so they never carry the "short" tag.
+  if (k != ACT_LOG && k != ACT_GUIDE && !game_affordable(k, 0)) {
     size_t l = strlen(sub);
     snprintf(sub + l, sn - l, " - short");
   }
@@ -266,7 +297,7 @@ static void menu_draw_row(GContext *ctx, const Layer *cell, MenuIndex *idx, void
     op_row_text(s_ops[idx->row].act, title, sizeof(title), sub, sizeof(sub));
   }
 
-  draw_cell(ctx, cell, title, sub);
+  draw_cell(ctx, cell, title, sub, 0);
 }
 
 static void menu_select(MenuLayer *m, MenuIndex *idx, void *c) {
@@ -284,7 +315,8 @@ static void menu_select(MenuLayer *m, MenuIndex *idx, void *c) {
     else return;
   } else {
     act = s_ops[idx->row].act;
-    if (act == ACT_LOG) { ui_show_ledger(); return; }
+    if (act == ACT_LOG)   { ui_show_ledger(); return; }
+    if (act == ACT_GUIDE) { ui_show_guide(); return; }
   }
 
   if (g.phase != PHASE_IDLE || !game_affordable(act, target)) {
@@ -376,7 +408,15 @@ static void ui_show_event(void) {
   window_stack_push(s_event_window, false);
 }
 
-// ---- ledger ----------------------------------------------------------------
+// ---- ledger and guide ------------------------------------------------------
+
+// The guide text lives in flash as a raw resource and is pulled into the heap
+// only while the window is up: aplite has ~4K of heap for the whole app, and a
+// permanent 1.4K string in rodata was enough to push it over on menu scrolls.
+static char *s_guide;
+static bool s_show_guide;
+
+static const char s_guide_oom[] = "Guide unavailable: not enough memory.";
 
 static void build_ledger_text(void) {
   size_t at = 0;
@@ -394,7 +434,20 @@ static void build_ledger_text(void) {
 static void ledger_load(Window *w) {
   Layer *root = window_get_root_layer(w);
   GRect b = layer_get_bounds(root);
-  build_ledger_text();
+  const char *doc;
+  if (s_show_guide) {
+    ResHandle h = resource_get_handle(RESOURCE_ID_GUIDE);
+    size_t n = resource_size(h);
+    s_guide = malloc(n + 1);
+    if (s_guide) {
+      resource_load(h, (uint8_t *)s_guide, n);
+      s_guide[n] = '\0';
+    }
+    doc = s_guide ? s_guide : s_guide_oom;
+  } else {
+    build_ledger_text();
+    doc = s_ledger;
+  }
 
   s_scroll = scroll_layer_create(b);
   scroll_layer_set_click_config_onto_window(s_scroll, w);
@@ -402,7 +455,7 @@ static void ledger_load(Window *w) {
 
   const int pad = PBL_IF_ROUND_ELSE(16, 4);
   s_ledger_text = text_layer_create(GRect(pad, 2, b.size.w - 2 * pad, 2000));
-  text_layer_set_text(s_ledger_text, s_ledger);
+  text_layer_set_text(s_ledger_text, doc);
   text_layer_set_font(s_ledger_text, s_f14);
   text_layer_set_background_color(s_ledger_text, GColorClear);
   text_layer_set_text_color(s_ledger_text, col_fg());
@@ -417,7 +470,7 @@ static void ledger_load(Window *w) {
 
   // Once the mission is over the ledger replaces the main screen, and the run
   // stops being something to come back to.
-  if (g.phase == PHASE_OVER) {
+  if (g.phase == PHASE_OVER && !s_show_guide) {
     window_stack_remove(s_main_window, false);
     s_has_save = false;
     session_clear();
@@ -427,10 +480,19 @@ static void ledger_load(Window *w) {
 static void ledger_unload(Window *w) {
   text_layer_destroy(s_ledger_text);
   scroll_layer_destroy(s_scroll);
+  free(s_guide);            // the guide text is only worth heap while it is on screen
+  s_guide = NULL;
 }
 
 static void ui_show_ledger(void) {
   if (window_stack_contains_window(s_ledger_window)) return;
+  s_show_guide = false;
+  window_stack_push(s_ledger_window, false);
+}
+
+static void ui_show_guide(void) {
+  if (window_stack_contains_window(s_ledger_window)) return;
+  s_show_guide = true;
   window_stack_push(s_ledger_window, false);
 }
 
@@ -521,11 +583,31 @@ static void main_unload(Window *w) {
 
 static uint16_t root_sections(MenuLayer *m, void *ctx) { return 1; }
 static uint16_t root_rows(MenuLayer *m, uint16_t section, void *ctx) { return s_has_save ? 2 : 1; }
-static int16_t root_header_h(MenuLayer *m, uint16_t section, void *ctx) { return MENU_CELL_BASIC_HEADER_HEIGHT; }
-static int16_t root_cell_h(MenuLayer *m, MenuIndex *idx, void *ctx) { return ROW_H; }
+static int16_t root_header_h(MenuLayer *m, uint16_t section, void *ctx) { return 0; }
+static int16_t root_cell_h(MenuLayer *m, MenuIndex *idx, void *ctx) { return ROW_H + ROOT_PAD; }
 
-static void root_draw_header(GContext *ctx, const Layer *cell, uint16_t section, void *c) {
-  draw_header(ctx, cell, "UNPACK");
+// The masthead is a fixed band above the menu: title, rule, splash art, rule.
+// It sits outside the MenuLayer so it cannot scroll away with the rows.
+static void masthead_update(Layer *l, GContext *ctx) {
+  GRect b = layer_get_bounds(l);
+
+  // Drawn here rather than through draw_header: this title has its own font and
+  // padding, and the in-game headers must keep theirs.
+  graphics_context_set_text_color(ctx, col_accent());
+  graphics_draw_text(ctx, "UNPACK", s_title_font,
+                     GRect(3, TITLE_PAD - 3, b.size.w - 6, TITLE_H),
+                     GTextOverflowModeTrailingEllipsis,
+                     PBL_IF_ROUND_ELSE(GTextAlignmentCenter, GTextAlignmentLeft), NULL);
+
+  graphics_context_set_stroke_color(ctx, col_fg());
+  graphics_draw_line(ctx, GPoint(0, TITLE_H), GPoint(b.size.w, TITLE_H));
+  graphics_draw_line(ctx, GPoint(0, b.size.h - 1), GPoint(b.size.w, b.size.h - 1));
+
+  if (s_splash) {
+    GSize sz = gbitmap_get_bounds(s_splash).size;
+    graphics_draw_bitmap_in_rect(ctx, s_splash,
+                                 GRect((b.size.w - sz.w) / 2, TITLE_H + 1, sz.w, sz.h));
+  }
 }
 
 static bool row_is_continue(uint16_t row) { return s_has_save && row == 0; }
@@ -539,7 +621,7 @@ static void root_draw_row(GContext *ctx, const Layer *cell, MenuIndex *idx, void
     snprintf(title, sizeof(title), "New session");
     snprintf(sub, sizeof(sub), s_has_save ? "discards the saved run" : "an uncharted system");
   }
-  draw_cell(ctx, cell, title, sub);
+  draw_cell(ctx, cell, title, sub, ROOT_PAD);
 }
 
 static void root_select(MenuLayer *m, MenuIndex *idx, void *c) {
@@ -556,13 +638,26 @@ static void root_appear(Window *w) {
 
 static void root_load(Window *w) {
   Layer *root = window_get_root_layer(w);
-  s_root_menu = menu_layer_create(layer_get_bounds(root));
+  GRect b = layer_get_bounds(root);
+
+  s_splash = gbitmap_create_with_resource(RESOURCE_ID_SPLASH);
+  int16_t art_h = s_splash ? gbitmap_get_bounds(s_splash).size.h : 0;
+  int16_t top = TITLE_H + 1 + art_h + 1;
+
+  s_masthead = layer_create(GRect(0, 0, b.size.w, top));
+  layer_set_update_proc(s_masthead, masthead_update);
+  layer_add_child(root, s_masthead);
+
+  // MenuLayer counts about 16px more content than the rows it actually draws, so
+  // a frame that only just fits the rows still scrolls the last one under the art.
+  // The splash bitmaps are cropped to leave that slack: 51px tall on the 144-wide
+  // screens, 98px on emery.
+  s_root_menu = menu_layer_create(GRect(0, top, b.size.w, b.size.h));
   menu_layer_set_callbacks(s_root_menu, NULL, (MenuLayerCallbacks) {
     .get_num_sections = root_sections,
     .get_num_rows = root_rows,
     .get_header_height = root_header_h,
     .get_cell_height = root_cell_h,
-    .draw_header = root_draw_header,
     .draw_row = root_draw_row,
     .select_click = root_select,
   });
@@ -575,11 +670,16 @@ static void root_load(Window *w) {
   layer_add_child(root, menu_layer_get_layer(s_root_menu));
 }
 
-static void root_unload(Window *w) { menu_layer_destroy(s_root_menu); }
+static void root_unload(Window *w) {
+  menu_layer_destroy(s_root_menu);
+  layer_destroy(s_masthead);
+  if (s_splash) { gbitmap_destroy(s_splash); s_splash = NULL; }
+}
 
 void ui_init(void) {
   s_f14  = fonts_get_system_font(FONT_KEY_GOTHIC_14);
   s_f14b = fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD);
+  s_title_font = fonts_get_system_font(TITLE_FONT);
 
   s_has_save = session_load();
 

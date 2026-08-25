@@ -8,10 +8,19 @@
 
 #define LAUNCH_WORKERS 5
 #define MAX_BODIES 5
+#ifdef PBL_PLATFORM_APLITE
+#define LOG_MAX 12   // aplite has 24K for code, data and heap together; the log is
+#else                // the biggest block we can trade back for working memory
 #define LOG_MAX 30
+#endif
 #define LOG_LEN 56
 
 typedef enum { BT_ASTEROID, BT_MOON, BT_PLANET, BT_ANOMALY } BodyType;
+
+// How far a biosphere has got. Only meaningful on a body with `bio` set. The
+// stage sets how long the inhabitants take to reach orbit and notice us --
+// LIFE_SIMPLE never gets there inside a mission.
+typedef enum { LIFE_SIMPLE, LIFE_PRIMITIVE, LIFE_PREINDUSTRIAL, LIFE_ADVANCED } LifeStage;
 
 typedef struct {
   char name[10];
@@ -21,6 +30,7 @@ typedef struct {
   uint8_t distance;  // 0..2 tier
   bool scanned;
   bool bio;
+  uint8_t life;      // LifeStage, only read when bio
   bool monitored;
   bool rig;
   bool forfeited;    // deliberately left alone
@@ -35,6 +45,7 @@ typedef enum {
   ACT_BUILD_WORKER,
   ACT_BUILD_RIG,
   ACT_LAUNCH,
+  ACT_GUIDE,          // not an action either: opens the terminology guide
 } ActionKind;
 
 typedef enum { PHASE_IDLE, PHASE_ACTION, PHASE_EVENT, PHASE_OVER } Phase;
@@ -102,3 +113,6 @@ const char *game_action_name(ActionKind k);
 
 const char *body_type_name(BodyType t);
 const char *tier_name(uint8_t t);
+const char *life_name(uint8_t stage);        // "microbial", "industrial", ...
+const char *life_readout(uint8_t stage);     // the scan line shown in the event panel
+uint32_t life_orbit_delay(uint8_t stage);    // cycles until orbit, 0 = never

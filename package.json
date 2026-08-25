@@ -5,6 +5,17 @@
   "keywords": [
     "pebble-app"
   ],
+  "scripts": {
+    "build": "pebble clean && pebble build",
+    "emulator": "npm run build && pebble install --emulator ",
+    "phone": "npm run build && pebble install --phone",
+    "config": "pebble emu-app-config --emulator",
+    "screenshot": "./scripts/screenshot.sh",
+    "logs": "pebble logs",
+    "cleanup": "npm run lint && npm run format",
+    "lint": "eslint src/**/*.js",
+    "format": "prettier --write src/**/*.js test/**/*.js"
+  },
   "private": true,
   "dependencies": {},
   "pebble": {
@@ -28,7 +39,40 @@
       "dummy"
     ],
     "resources": {
-      "media": []
+      "media": [
+        {
+          "menuIcon": "true",
+          "type": "png",
+          "name": "MENU_ICON",
+          "file": "menu_icon.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "SPLASH",
+          "file": "splash-basalt.png",
+          "targetPlatforms": [
+            "aplite",
+            "basalt",
+            "chalk",
+            "diorite",
+            "flint"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "SPLASH",
+          "file": "splash-emery.png",
+          "targetPlatforms": [
+            "emery",
+            "gabbro"
+          ]
+        },
+        {
+          "type": "raw",
+          "name": "GUIDE",
+          "file": "guide.txt"
+        }
+      ]
     }
   }
 }

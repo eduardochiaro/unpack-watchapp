@@ -1,0 +1,33 @@
+READOUT
+P - power. Arrays make it, everything else spends it.
+M - materials. Mined mass. Pays for every build.
+W - workers. Each one shortens every action; 12 is as far as that goes.
+T+n yr - mission clock. It runs whether or not you act.
+The bar fills while an action runs. One action at a time.
+
+SYSTEM
+The bodies the survey found. Each row is name, type, state.
+unscanned - scan it to learn the yield.
+dist low/med/high - far bodies cost more time to scan and to rig.
+low/med/high yield - how fast a rig pulls M out. The number is M left.
+BIO - life down there. Mining it is a decision, not a formality.
+RIG - a rig is working the body. It draws 1 P per cycle.
+MONITORED - left alone and watched.
+depleted - empty. The rig comes back.
+left intact - you gave it up.
+
+OPS
+System survey - reveals the bodies. Free, once.
+Body scan - reveals one body's yield.
+Power array - +2 P per cycle and a higher P ceiling. Permanent.
+Worker unit - +1 W.
+Mining rig - select a scanned body to build one. It converts the body to M.
+Probe + launch - the goal. Needs 5 W, and they leave with it.
+short - you cannot pay for it yet.
+
+EVENTS
+Interruptions with choices. Nothing is timed, but the choice is permanent.
+
+ENDINGS
+Launch the probe and the mission is over, won.
+With no rig running and too little M for either a rig or the launch, the mission collapses.

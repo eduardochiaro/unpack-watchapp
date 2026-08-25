@@ -164,6 +164,87 @@ static void resume_mid_event(void) {
   }
 }
 
+/* Monitoring a biosphere buys time proportional to how far it still has to go.
+   The four stages must stay strictly ordered and non-overlapping, and microbial
+   life must schedule nothing at all -- a delay that never arrives would sit in
+   the single pending slot and block every other chained event. */
+static void life_stages(void) {
+  uint32_t lo[4] = { 999999, 999999, 999999, 999999 }, hi[4] = { 0, 0, 0, 0 };
+
+  srand(7);
+  for (int i = 0; i < 4000; i++) {
+    for (uint8_t st = 0; st < 4; st++) {
+      uint32_t d = life_orbit_delay(st);
+      if (d < lo[st]) lo[st] = d;
+      if (d > hi[st]) hi[st] = d;
+    }
+  }
+  assert(lo[LIFE_SIMPLE] == 0 && hi[LIFE_SIMPLE] == 0);   /* microbes never make orbit */
+  assert(hi[LIFE_ADVANCED] < lo[LIFE_PREINDUSTRIAL]);
+  assert(hi[LIFE_PREINDUSTRIAL] < lo[LIFE_PRIMITIVE]);
+  assert(strcmp(life_readout(LIFE_SIMPLE), life_readout(LIFE_ADVANCED)) != 0);
+
+  /* The monitor branch has to act on that: schedule for the three stages that
+     reach orbit, schedule nothing for the one that does not. */
+  for (uint8_t st = 0; st < 4; st++) {
+    game_new_seeded(4200 + st);
+    g.system_scanned = true;
+    g.bodies[0].scanned = true;
+    g.bodies[0].bio = true;
+    g.bodies[0].life = st;
+    g.pending_event = -1;
+
+    events_schedule(EV_BIO, 0, g.cycle);
+    assert(events_maybe_fire());
+    assert(strstr(events_text(), life_readout(st)) != NULL);
+
+    uint8_t n = events_choice_count();
+    events_resolve((uint8_t)(n - 1));           /* "Monitor and continue" */
+    assert(g.bodies[0].monitored);
+    if (st == LIFE_SIMPLE) {
+      assert(g.pending_event == -1);
+    } else {
+      assert(g.pending_event == EV_SPACEFLIGHT);
+      assert(g.pending_at > g.cycle);
+    }
+  }
+}
+
+/* Life only appears on planets and moons, at the odds the design calls for.
+   Sampled over many generated systems, each stage must land within a point or
+   two of its target -- a swapped or shifted threshold moves it much further. */
+static void life_odds(void) {
+  uint32_t seen[4][5] = {{0}};   /* [type][stage], index 4 = no life */
+
+  for (unsigned seed = 1; seed <= 20000; seed++) {
+    game_new_seeded(seed);
+    for (uint8_t i = 0; i < g.body_count; i++) {
+      const Body *b = &g.bodies[i];
+      seen[b->type][b->bio ? b->life : 4]++;
+    }
+  }
+
+  /* Percent targets, indexed the same way. Asteroids and anomalies: never. */
+  static const int want[4][5] = {
+    [BT_ASTEROID] = {  0,  0,  0, 0, 100 },
+    [BT_MOON]     = { 20, 14, 10, 1,  55 },
+    [BT_PLANET]   = { 30, 25, 10, 5,  30 },
+    [BT_ANOMALY]  = {  0,  0,  0, 0, 100 },
+  };
+
+  for (uint8_t t = 0; t < 4; t++) {
+    uint32_t tot = 0;
+    for (uint8_t k = 0; k < 5; k++) tot += seen[t][k];
+    assert(tot > 2000);              /* every body type must actually turn up */
+    for (uint8_t k = 0; k < 5; k++) {
+      int pct = (int)((seen[t][k] * 100 + tot / 2) / tot);
+      int d = pct - want[t][k];
+      if (d < 0) d = -d;
+      assert(d <= 2);
+    }
+  }
+}
+
 int main(void) {
   int launched = 0, collapsed = 0, sudden = 0;
 
@@ -199,6 +280,8 @@ int main(void) {
 
   event_matrix();
   resume_mid_event();
+  life_stages();
+  life_odds();
 
   printf("300 runs: %d launched, %d collapsed, %d sudden death\n", launched, collapsed, sudden);
   assert(launched > 0);      /* the mission must be completable */

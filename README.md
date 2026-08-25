@@ -24,12 +24,25 @@ basalt, chalk, diorite) are included by default for backwards compatibility.
 
 ## Playing
 
-The app opens on a main menu. **Continue** appears first whenever a session is
-saved; **New session** generates a fresh system and discards it.
+The app opens on a main menu: the title, splash art between two rules, then the
+rows. **Continue** appears first whenever a session is saved; **New session**
+generates a fresh system and discards it.
+
+The splash ships at two sizes -- `resources/splash-basalt.png` (144x51, used on
+the 144-wide platforms and cropped by chalk's round bezel) and
+`resources/splash-emery.png` (200x98, also used on gabbro). Both bind to the
+same `RESOURCE_ID_SPLASH`, so the layout code never branches on platform.
 
 - **Up / Down** - move through the SYSTEM and OPS lists
 - **Select** - start the highlighted action, or confirm an event choice
-- **Back** - leave the mission log, or return from the mission to the menu
+- **Back** - leave the mission log or guide, or return from the mission to the menu
+
+The last OPS row is **Guide**: a scrolling page explaining the readouts, the
+body states, each op and how a run ends. Its text is `resources/guide.txt`,
+loaded as a raw resource only while the window is open -- aplite has 24K for
+code, data and heap together, and a permanent copy in rodata left too little
+heap to scroll the menu. For the same reason aplite caps the mission log at 12
+entries where the other platforms hold 30.
 
 One action runs at a time. While an action runs, in-game time fast-forwards;
 while idle, it still advances, just slower. Narrative events interrupt either

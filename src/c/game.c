@@ -14,8 +14,41 @@ void game_log_line(const char *s) {
 static const char *s_tier[3] = { "low", "med", "high" };
 static const char *s_type[4] = { "asteroid", "moon", "planet", "anomaly" };
 
+static const char *s_life[4]    = { "microbial", "primitive", "pre-industrial", "industrial" };
+static const char *s_readout[4] = {
+  "Microbial. Nothing there can notice us.",
+  "Pre-agricultural. Stone and fire.",
+  "Pre-industrial. They are not aware of us.",
+  "Industrial. Their telescopes are improving.",
+};
+
+// Cycles from first contact with the signal until the inhabitants make orbit.
+// The further along a biosphere already is, the less time monitoring buys.
+// LIFE_SIMPLE returns 0: microbes do not reach orbit inside a mission, so the
+// event is never scheduled at all rather than parked in the pending slot.
+static const uint16_t s_orbit_base[4] = { 0, 400, 180, 90 };
+static const uint16_t s_orbit_span[4] = { 0, 260, 160, 70 };
+
 const char *tier_name(uint8_t t) { return s_tier[t > 2 ? 2 : t]; }
 const char *body_type_name(BodyType t) { return s_type[t > 3 ? 3 : t]; }
+const char *life_name(uint8_t stage) { return s_life[stage > 3 ? 3 : stage]; }
+const char *life_readout(uint8_t stage) { return s_readout[stage > 3 ? 3 : stage]; }
+
+uint32_t life_orbit_delay(uint8_t stage) {
+  if (stage > 3) stage = 3;
+  if (s_orbit_base[stage] == 0) return 0;
+  return s_orbit_base[stage] + (uint32_t)(rand() % s_orbit_span[stage]);
+}
+
+// Cumulative life-stage odds in percent, indexed by BodyType then LifeStage.
+// Planet: 30 microbial / 25 primitive / 10 pre-industrial / 5 advanced, 30 dead.
+// Moon:   20 / 14 / 10 / 1, 55 dead.
+static const uint8_t s_life_odds[4][4] = {
+  [BT_ASTEROID] = {  0,  0,  0,  0 },
+  [BT_MOON]     = { 20, 34, 44, 45 },
+  [BT_PLANET]   = { 30, 55, 65, 70 },
+  [BT_ANOMALY]  = {  0,  0,  0,  0 },
+};
 
 static void gen_body(Body *b, uint8_t idx) {
   int roll = rand() % 100;
@@ -36,8 +69,16 @@ static void gen_body(Body *b, uint8_t idx) {
   }
 
   b->remaining = 90 + b->yield * 120 + (rand() % 70);
-  // Only bodies that can hold a biosphere flag one, and rarely.
-  b->bio = (b->type == BT_PLANET || b->type == BT_MOON) && (rand() % 100 < 32);
+
+  // One roll settles both whether the body carries life and how far along it is.
+  // A roll that clears the last threshold is a dead body, so the table also
+  // enforces that only planets and moons can hold a biosphere at all.
+  const uint8_t *cum = s_life_odds[b->type];
+  int r = rand() % 100;
+  b->bio = false;
+  for (uint8_t st = 0; st < 4; st++) {
+    if (r < cum[st]) { b->bio = true; b->life = st; break; }
+  }
   if (b->type == BT_ANOMALY) b->hazard = 2;
 }
 
