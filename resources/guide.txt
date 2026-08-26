@@ -1,9 +1,16 @@
+MISSION
+Survey the system and mine it. Build factories, then the colony
+frames, then close the orbital ring the colonists will arrive to.
+Then break orbit for the next system.
+
 READOUT
 P - power. Arrays make it, everything else spends it.
 M - materials. Mined mass. Pays for every build.
 W - workers. Each one shortens every action; 12 is as far as that goes.
 T+n yr - mission clock. It runs whether or not you act.
 The bar fills while an action runs. One action at a time.
+On an ops row, "80c" is what the action costs in cycles, and
+"short" means you cannot pay for it yet.
 
 SYSTEM
 The bodies the survey found. Each row is name, type, state.
@@ -22,12 +29,14 @@ Body scan - reveals one body's yield.
 Power array - +2 P per cycle and a higher P ceiling. Permanent.
 Worker unit - +1 W.
 Mining rig - select a scanned body to build one. It converts the body to M.
-Probe + launch - the goal. Needs 5 W, and they leave with it.
+Factory - shortens every later build. Scans are unaffected.
+Colony frame - orbital anchor. Needs 2 W, built into it. 3 needed.
+Orbital ring - the goal. Needs 3 frames, 2 factories and 3 W.
 short - you cannot pay for it yet.
 
 EVENTS
 Interruptions with choices. Nothing is timed, but the choice is permanent.
 
 ENDINGS
-Launch the probe and the mission is over, won.
-With no rig running and too little M for either a rig or the launch, the mission collapses.
+Close the ring and the probe departs. That is the good ending.
+With no rig running and too little M to finish what is left of the chain, the mission collapses.

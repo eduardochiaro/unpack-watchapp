@@ -51,7 +51,7 @@ static const EventDef s_defs[EV_COUNT] = {
   [EV_ARRIVAL] = {
     "INBOUND",
     "Something answered the reply. It is decelerating into the system.",
-    { "Divert all to launch", "Hold and build" }, 2, false, false },
+    { "Divert all to the ring", "Hold and build" }, 2, false, false },
 
   [EV_LOSS] = {
     "TERMINATION",
@@ -206,6 +206,9 @@ bool events_maybe_fire(void) {
   if (n == 0) return false;
 
   uint8_t ev = pool[rand() % n];
+  // Coronal ejections are the one event that can take infrastructure away for
+  // good, so they fire at half the rate of everything else in the pool.
+  if (ev == EV_STORM && (rand() % 2) == 0) return false;
   int8_t target = 0;
   if (s_defs[ev].needs_body) {
     target = pick_body(has_rig);
@@ -282,6 +285,10 @@ static void apply(uint8_t ev, uint8_t c, uint8_t t) {
       if (c == 0) {
         g.workers--;
         game_log("T+%lu Arrays shielded. One worker lost.", (unsigned long)g.cycle);
+      } else if (rand() % 2) {
+        // Half the time the arrays ride it out and only the charge is lost.
+        g.power -= bite(g.power, 50, 10);
+        game_log("T+%lu Ejection absorbed. Arrays held.", (unsigned long)g.cycle);
       } else {
         if (g.arrays > 0) g.arrays--;
         g.power -= bite(g.power, 50, 10);
@@ -324,7 +331,7 @@ static void apply(uint8_t ev, uint8_t c, uint8_t t) {
     case EV_ARRIVAL:
       if (c == 0) {
         g.rush = true; g.materials -= bite(g.materials, 15, 10);
-        game_log("T+%lu All capacity diverted to launch.", (unsigned long)g.cycle);
+        game_log("T+%lu All capacity diverted to construction.", (unsigned long)g.cycle);
       } else {
         events_schedule(EV_LOSS, 0, g.cycle + 90);
         game_log("T+%lu Held position. Contact still inbound.", (unsigned long)g.cycle);

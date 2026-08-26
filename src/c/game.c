@@ -1,11 +1,19 @@
 #include "game.h"
+#include <string.h>
 #include "events.h"
 
 GameState g;
 char g_logbuf[LOG_LEN];
 
 void game_log_line(const char *s) {
-  if (g.log_count >= LOG_MAX) { g.log_full = true; return; }
+  if (g.log_count >= LOG_MAX) {
+    // Drop the oldest line rather than the newest. The end of a run is what the
+    // ledger exists to show, and on aplite only 12 lines fit -- keeping the head
+    // meant a long mission ended with its ending missing.
+    memmove(g.log[0], g.log[1], (size_t)(LOG_MAX - 1) * LOG_LEN);
+    g.log_count = LOG_MAX - 1;
+    g.log_full = true;
+  }
   strncpy(g.log[g.log_count], s, LOG_LEN - 1);
   g.log[g.log_count][LOG_LEN - 1] = '\0';
   g.log_count++;
@@ -68,7 +76,7 @@ static void gen_body(Body *b, uint8_t idx) {
     default:          snprintf(b->name, sizeof(b->name), "ANOM-%d",  1 + idx); break;
   }
 
-  b->remaining = 90 + b->yield * 120 + (rand() % 70);
+  b->remaining = 110 + b->yield * 150 + (rand() % 80);
 
   // One roll settles both whether the body carries life and how far along it is.
   // A roll that clears the last threshold is a dead body, so the table also
@@ -109,7 +117,9 @@ int16_t game_cost_mat(ActionKind k) {
     case ACT_BUILD_POWER:  return 15;
     case ACT_BUILD_WORKER: return 12;
     case ACT_BUILD_RIG:    return 25;
-    case ACT_LAUNCH:       return 400;
+    case ACT_BUILD_FACTORY: return 45;
+    case ACT_FRAME:        return 85;
+    case ACT_RING:         return 125;
     default:               return 0;
   }
 }
@@ -119,7 +129,9 @@ int16_t game_cost_pow(ActionKind k) {
     case ACT_SCAN_BODY:    return 2;
     case ACT_BUILD_WORKER: return 6;
     case ACT_BUILD_RIG:    return 10;
-    case ACT_LAUNCH:       return 140;
+    case ACT_BUILD_FACTORY: return 20;
+    case ACT_FRAME:        return 40;
+    case ACT_RING:         return 60;
     default:               return 0;
   }
 }
@@ -127,16 +139,23 @@ int16_t game_cost_pow(ActionKind k) {
 uint16_t game_duration(ActionKind k, uint8_t target) {
   uint16_t base;
   switch (k) {
-    case ACT_SCAN_SYSTEM:  base = 36; break;
-    case ACT_SCAN_BODY:    base = 24 + g.bodies[target].distance * 18; break;
-    case ACT_BUILD_POWER:  base = 82; break;
-    case ACT_BUILD_WORKER: base = 98; break;
-    case ACT_BUILD_RIG:    base = 128 + g.bodies[target].distance * 38; break;
-    case ACT_LAUNCH:       base = g.rush ? 135 : 255; break;
+    case ACT_SCAN_SYSTEM:  base = 18; break;
+    case ACT_SCAN_BODY:    base = 12 + g.bodies[target].distance * 9; break;
+    case ACT_BUILD_POWER:  base = 41; break;
+    case ACT_BUILD_WORKER: base = 49; break;
+    case ACT_BUILD_RIG:    base = 64 + g.bodies[target].distance * 19; break;
+    case ACT_BUILD_FACTORY: base = 60; break;
+    case ACT_FRAME:        base = g.rush ? 52 : 80; break;
+    case ACT_RING:         base = g.rush ? 68 : 128; break;
     default:               return 1;
   }
   // Workers are the compounding multiplier: they only ever shorten the window.
-  uint16_t d = (uint16_t)((base * 4) / (4 + (g.workers > 12 ? 12 : g.workers)));
+  // Factories are the same multiplier aimed at one half of the game -- each is
+  // worth three workers, but only on something being built.
+  uint16_t boost = g.workers;
+  if (k >= ACT_BUILD_POWER && k <= ACT_RING) boost += (uint16_t)(g.factories * 3);
+  if (boost > 12) boost = 12;
+  uint16_t d = (uint16_t)((base * 4) / (4 + boost));
   return d < 3 ? 3 : d;
 }
 
@@ -144,7 +163,11 @@ bool game_affordable(ActionKind k, uint8_t target) {
   (void)target;
   if (g.materials < game_cost_mat(k)) return false;
   if (g.power < game_cost_pow(k)) return false;
-  if (k == ACT_LAUNCH && g.workers < LAUNCH_WORKERS) return false;
+  if (k == ACT_FRAME && g.workers < FRAME_WORKERS) return false;
+  if (k == ACT_RING) {
+    if (g.workers < RING_WORKERS) return false;
+    if (g.frames < RING_FRAMES || g.factories < RING_FACTORIES) return false;
+  }
   return true;
 }
 
@@ -155,7 +178,9 @@ const char *game_action_name(ActionKind k) {
     case ACT_BUILD_POWER:  return "ARRAY";
     case ACT_BUILD_WORKER: return "WORKER";
     case ACT_BUILD_RIG:    return "RIG";
-    case ACT_LAUNCH:       return "LAUNCH";
+    case ACT_BUILD_FACTORY: return "FACTORY";
+    case ACT_FRAME:        return "FRAME";
+    case ACT_RING:         return "RING";
     default:               return "IDLE";
   }
 }
@@ -164,7 +189,8 @@ void game_start_action(ActionKind k, uint8_t target) {
   if (g.phase != PHASE_IDLE || !game_affordable(k, target)) return;
   g.materials -= game_cost_mat(k);
   g.power     -= game_cost_pow(k);
-  if (k == ACT_LAUNCH) g.workers -= LAUNCH_WORKERS;   // the crew goes with the probes
+  if (k == ACT_FRAME) g.workers -= FRAME_WORKERS;   // the crew is spent on the structure
+  if (k == ACT_RING)  g.workers -= RING_WORKERS;
 
   g.action = k;
   g.action_target = target;
@@ -207,9 +233,21 @@ static void complete_action(void) {
       game_log("T+%lu Rig anchored on %s.", (unsigned long)g.cycle, b->name);
       break;
 
-    case ACT_LAUNCH:
-      game_log("T+%lu Probes clear the system.", (unsigned long)g.cycle);
-      game_end(END_LAUNCH);
+    case ACT_BUILD_FACTORY:
+      g.factories++;
+      game_log("T+%lu Factory %d fabricating.", (unsigned long)g.cycle, g.factories);
+      break;
+
+    case ACT_FRAME:
+      g.frames++;
+      game_log("T+%lu Colony frame %d of %d anchored.", (unsigned long)g.cycle,
+               g.frames, RING_FRAMES);
+      break;
+
+    case ACT_RING:
+      game_log("T+%lu Orbital ring closed. System prepared.", (unsigned long)g.cycle);
+      game_log("T+%lu We break orbit. Next system inbound.", (unsigned long)g.cycle);
+      game_end(END_DEPART);
       return;
 
     default: break;
@@ -238,26 +276,34 @@ static bool riggable(void) {
 }
 
 // Arrays buffer power, they do not bank it forever. Without a ceiling an idle
-// probe could sit and accumulate its way to a launch, and the counter overflows.
+// probe could sit and accumulate its way to a ring, and the counter overflows.
 static int16_t power_cap(void) { return (int16_t)(20 + g.arrays * 50); }
 
 static void check_collapse(void) {
   // Materials only ever come from a running rig, so with none running the
-  // question is whether the probe can still pay its way back to one -- or out.
+  // question is whether the probe can still pay its way back to one -- or all
+  // the way through what is left of the chain to the ring.
   if (extracting()) return;
 
-  int16_t need_workers = LAUNCH_WORKERS - g.workers;
+  // What is left of the construction chain, at current progress.
+  int16_t need_fact  = RING_FACTORIES - g.factories;
+  int16_t need_frame = RING_FRAMES - g.frames;
+  if (need_fact < 0)  need_fact = 0;
+  if (need_frame < 0) need_frame = 0;
+  int16_t need_workers = (int16_t)(need_frame * FRAME_WORKERS + RING_WORKERS - g.workers);
   if (need_workers < 0) need_workers = 0;
   // Power is only obtainable through an array, so a probe with none has to
   // fund one out of the same stock before anything else it wants to do.
   int16_t array_tax = (g.arrays > 0) ? 0 : game_cost_mat(ACT_BUILD_POWER);
 
-  int16_t mat_to_launch = (int16_t)(game_cost_mat(ACT_LAUNCH) +
-                                    need_workers * game_cost_mat(ACT_BUILD_WORKER) + array_tax);
-  bool can_launch = g.materials >= mat_to_launch;
+  int16_t mat_to_ring = (int16_t)(game_cost_mat(ACT_RING) +
+                                  need_fact * game_cost_mat(ACT_BUILD_FACTORY) +
+                                  need_frame * game_cost_mat(ACT_FRAME) +
+                                  need_workers * game_cost_mat(ACT_BUILD_WORKER) + array_tax);
+  bool can_finish = g.materials >= mat_to_ring;
   bool can_rig = riggable() && g.materials >= (int16_t)(game_cost_mat(ACT_BUILD_RIG) + array_tax);
 
-  if (!can_launch && !can_rig) {
+  if (!can_finish && !can_rig) {
     game_log("T+%lu Reserves gone. Nothing left to build with.", (unsigned long)g.cycle);
     game_end(END_COLLAPSE);
   }
@@ -306,12 +352,18 @@ void game_end(EndKind kind) {
 
   game_log("---");
   switch (kind) {
-    case END_LAUNCH:   game_log("MISSION: probes launched."); break;
-    case END_COLLAPSE: game_log("MISSION: collapse. No launch."); break;
-    default:           game_log("MISSION: terminated."); break;
+    case END_DEPART:   game_log("MISSION: ring closed. Probe departed."); break;
+    case END_COLLAPSE: game_log("MISSION: collapse. No ring, no colony."); break;
+    // A sudden end has one cause, and the ledger is the only place it is ever
+    // spelled out: the reply we sent was answered, and we stayed to meet it.
+    default:
+      game_log("MISSION: terminated by external contact.");
+      game_log("We answered the transmission. It came. We held position.");
+      break;
   }
   game_log("Elapsed: %lu yr", (unsigned long)g.cycle);
-  game_log("Arrays %d  Workers %d  Decisions %d", g.arrays, g.workers, g.decisions);
+  game_log("Arrays %d  Factories %d  Frames %d", g.arrays, g.factories, g.frames);
+  game_log("Workers %d  Decisions %d", g.workers, g.decisions);
   game_log("Materials left: %d", g.materials);
 
   for (uint8_t i = 0; i < g.body_count; i++) {

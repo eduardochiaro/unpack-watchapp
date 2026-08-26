@@ -43,7 +43,7 @@ static char s_ledger[LOG_MAX * (LOG_LEN + 1) + 8];
 static GFont s_f14, s_f14b, s_title_font;
 
 typedef struct { ActionKind act; } OpRow;
-static OpRow s_ops[8];
+static OpRow s_ops[10];
 static uint8_t s_ops_n;
 
 static void ui_show_ledger(void);
@@ -154,7 +154,9 @@ static void build_ops(void) {
   if (!g.system_scanned) s_ops[s_ops_n++].act = ACT_SCAN_SYSTEM;
   s_ops[s_ops_n++].act = ACT_BUILD_POWER;
   s_ops[s_ops_n++].act = ACT_BUILD_WORKER;
-  s_ops[s_ops_n++].act = ACT_LAUNCH;
+  s_ops[s_ops_n++].act = ACT_BUILD_FACTORY;
+  s_ops[s_ops_n++].act = ACT_FRAME;
+  s_ops[s_ops_n++].act = ACT_RING;
   s_ops[s_ops_n++].act = ACT_LOG;
   s_ops[s_ops_n++].act = ACT_GUIDE;
 }
@@ -253,19 +255,38 @@ static void op_row_text(ActionKind k, char *title, size_t tn, char *sub, size_t 
   switch (k) {
     case ACT_SCAN_SYSTEM:
       snprintf(title, tn, "System survey");
-      snprintf(sub, sn, "free - %d cyc", game_duration(k, 0));
+      snprintf(sub, sn, "free %dc", game_duration(k, 0));
       break;
     case ACT_BUILD_POWER:
       snprintf(title, tn, "Power array (%d)", g.arrays);
-      snprintf(sub, sn, "%dM - %d cyc", game_cost_mat(k), game_duration(k, 0));
+      snprintf(sub, sn, "%dM %dc", game_cost_mat(k), game_duration(k, 0));
       break;
     case ACT_BUILD_WORKER:
       snprintf(title, tn, "Worker unit (%d)", g.workers);
-      snprintf(sub, sn, "%dM %dP - %d cyc", game_cost_mat(k), game_cost_pow(k), game_duration(k, 0));
+      snprintf(sub, sn, "%dM %dP %dc", game_cost_mat(k), game_cost_pow(k), game_duration(k, 0));
       break;
-    case ACT_LAUNCH:
-      snprintf(title, tn, "Probe + launch");
-      snprintf(sub, sn, "%dM %dP %dW - %d cyc", game_cost_mat(k), game_cost_pow(k), LAUNCH_WORKERS, game_duration(k, 0));
+    case ACT_BUILD_FACTORY:
+      snprintf(title, tn, "Factory (%d)", g.factories);
+      snprintf(sub, sn, "%dM %dP %dc", game_cost_mat(k), game_cost_pow(k), game_duration(k, 0));
+      break;
+    case ACT_FRAME:
+      snprintf(title, tn, "Colony frame (%d/%d)", g.frames, RING_FRAMES);
+      snprintf(sub, sn, "%dM %dP %dW %dc", game_cost_mat(k), game_cost_pow(k), FRAME_WORKERS, game_duration(k, 0));
+      break;
+    case ACT_RING:
+      snprintf(title, tn, "Orbital ring");
+      // The ring is gated on the rest of the chain, so the row reports what is
+      // still missing rather than a price the player cannot act on yet.
+      if (g.frames < RING_FRAMES || g.factories < RING_FACTORIES)
+        {
+          int nf = RING_FRAMES - g.frames, nk = RING_FACTORIES - g.factories;
+          if (nf < 0) nf = 0;
+          if (nk < 0) nk = 0;
+          snprintf(sub, sn, "%d frame%s, %d factor%s", nf, nf == 1 ? "" : "s",
+                   nk, nk == 1 ? "y" : "ies");
+        }
+      else
+        snprintf(sub, sn, "%dM %dP %dW %dc", game_cost_mat(k), game_cost_pow(k), RING_WORKERS, game_duration(k, 0));
       break;
     case ACT_GUIDE:
       snprintf(title, tn, "Guide");
@@ -276,8 +297,10 @@ static void op_row_text(ActionKind k, char *title, size_t tn, char *sub, size_t 
       snprintf(sub, sn, "%d entries", g.log_count);
       break;
   }
-  // The two reading screens cost nothing, so they never carry the "short" tag.
-  if (k != ACT_LOG && k != ACT_GUIDE && !game_affordable(k, 0)) {
+  // The two reading screens cost nothing, so they never carry the "short" tag,
+  // and a ring already reporting its missing prerequisites does not need it.
+  bool gated_ring = (k == ACT_RING && (g.frames < RING_FRAMES || g.factories < RING_FACTORIES));
+  if (k != ACT_LOG && k != ACT_GUIDE && !gated_ring && !game_affordable(k, 0)) {
     size_t l = strlen(sub);
     snprintf(sub + l, sn - l, " - short");
   }
@@ -421,13 +444,12 @@ static const char s_guide_oom[] = "Guide unavailable: not enough memory.";
 static void build_ledger_text(void) {
   size_t at = 0;
   s_ledger[0] = '\0';
+  // The log keeps its tail, so what is missing is the start of the mission.
+  if (g.log_full) at = (size_t)snprintf(s_ledger, sizeof(s_ledger), "(earlier entries dropped)\n");
   for (uint8_t i = 0; i < g.log_count && at < sizeof(s_ledger) - 2; i++) {
     int n = snprintf(s_ledger + at, sizeof(s_ledger) - at, "%s\n", g.log[i]);
     if (n < 0) break;
     at += (size_t)n;
-  }
-  if (g.log_full && at < sizeof(s_ledger) - 20) {
-    snprintf(s_ledger + at, sizeof(s_ledger) - at, "(log truncated)\n");
   }
 }
 

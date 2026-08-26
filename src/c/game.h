@@ -6,7 +6,12 @@
 #define TICK_MS      200
 #define IDLE_DIVISOR 4
 
-#define LAUNCH_WORKERS 5
+// The construction chain. Factories speed every later build, frames are what the
+// ring anchors to, and the ring is the last thing built before the probe leaves.
+#define FRAME_WORKERS  2   // crew committed to each frame; they stay with it
+#define RING_WORKERS   3   // crew committed to the ring
+#define RING_FRAMES    3
+#define RING_FACTORIES 2
 #define MAX_BODIES 5
 #ifdef PBL_PLATFORM_APLITE
 #define LOG_MAX 12   // aplite has 24K for code, data and heap together; the log is
@@ -43,17 +48,19 @@ typedef enum {
   ACT_SCAN_BODY,
   ACT_BUILD_POWER,
   ACT_BUILD_WORKER,
+  ACT_BUILD_FACTORY,
   ACT_BUILD_RIG,
-  ACT_LAUNCH,
+  ACT_FRAME,
+  ACT_RING,
   ACT_GUIDE,          // not an action either: opens the terminology guide
 } ActionKind;
 
 typedef enum { PHASE_IDLE, PHASE_ACTION, PHASE_EVENT, PHASE_OVER } Phase;
-typedef enum { END_NONE, END_LAUNCH, END_COLLAPSE, END_SUDDEN } EndKind;
+typedef enum { END_NONE, END_DEPART, END_COLLAPSE, END_SUDDEN } EndKind;
 
 typedef struct {
   int16_t power, materials, workers;
-  uint8_t arrays;
+  uint8_t arrays, factories, frames;
 
   Body bodies[MAX_BODIES];
   uint8_t body_count;
@@ -68,7 +75,7 @@ typedef struct {
   uint16_t action_left, action_total;
 
   EndKind end;
-  bool rush;               // launch prep shortened
+  bool rush;               // frame and ring assembly shortened
 
   int8_t active_event;     // event on screen right now, -1 = none
   uint8_t active_target;

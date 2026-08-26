@@ -4,8 +4,9 @@
 to the design in `reference-files/game-pebble.md`. You arrive in a procedurally
 generated system with a seed payload and no infrastructure, unpack yourself into
 extraction and power, endure narrative events with no clean answers, and build
-the probes that continue the chain. A session runs 5-15 minutes, start to launch
-or failure. No phone dependency.
+the infrastructure the human colonists will arrive to -- factories, colony
+frames, and finally the orbital ring -- then break orbit for the next system. A
+session runs 2-4 minutes, start to departure or failure. No phone dependency.
 
 ## Building & running
 
@@ -44,17 +45,31 @@ code, data and heap together, and a permanent copy in rodata left too little
 heap to scroll the menu. For the same reason aplite caps the mission log at 12
 entries where the other platforms hold 30.
 
+Construction is a chain: **Factory** shortens every later build (each is worth
+three workers, and does nothing for scans), **Colony frame** is what the ring
+anchors to and eats 2 workers apiece, and **Orbital ring** unlocks only once 3
+frames and 2 factories stand. Closing the ring ends the run. Until the
+prerequisites are met the ring row reports what is still missing instead of a
+price.
+
 One action runs at a time. While an action runs, in-game time fast-forwards;
 while idle, it still advances, just slower. Narrative events interrupt either
-one and freeze time until answered. The run ends when probes launch, when the
-system collapses, or when an event resolves catastrophically -- then the mission
-log becomes the ledger.
+one and freeze time until answered. The run ends when the orbital ring closes
+and the probe departs, when the system collapses, or when an event resolves
+catastrophically -- then the mission log becomes the ledger.
+
+One system per run. The multi-system runs and the carried bonus/malus legacy in
+`reference-files/game-progression.md` are not in this version -- a Pebble
+session ends at the first departure.
 
 ### Saving
 
 The session is written to persistent storage when the app closes, and offered
 as **Continue** next time. A run that has ended is not resumable -- showing its
-ledger clears the save. State is stored as a run of 256-byte chunks (the cap on
+ledger clears the save. Adding the factory and frame counters changed
+`sizeof(GameState)`, and the meta key stores that size -- so saves written
+before the construction chain invalidate themselves rather than loading as
+nonsense. State is stored as a run of 256-byte chunks (the cap on
 a single persist key), with the meta key written last and validated first, so a
 half-finished write can never be read back as a save.
 
@@ -75,10 +90,14 @@ the menu is free, where in-mission idle time is not.
 
 `test/sim_test.c` compiles the pure game logic natively (against a small
 `test/pebble.h` stand-in) and plays 300 headless runs plus every event through
-every choice. It asserts the invariants and the design targets: no negative
-pools, no stalled runs, the mission stays completable, sessions stay in the
-5-15 minute band, and a session round-tripped through a byte buffer rebuilds
-the same event panel it was saved on.
+every choice. It asserts the invariants and the
+measured pacing: no negative pools, no stalled runs, the mission stays
+completable, the orbital ring stays gated on its frames and factories while
+factories shorten builds and not scans, sessions stay in their measured length band, stellar events fire
+at half the rate of the rest of the pool and spare the arrays half the time,
+the ledger of a sudden ending names its cause even when the log has overflowed,
+and a session round-tripped through a byte buffer rebuilds the same event panel
+it was saved on.
 
 ```sh
 cc -std=c11 -Wall -I test -o /tmp/sim_test test/sim_test.c src/c/game.c src/c/events.c
