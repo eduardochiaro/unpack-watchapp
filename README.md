@@ -34,6 +34,19 @@ the 144-wide platforms and cropped by chalk's round bezel) and
 `resources/splash-emery.png` (200x98, also used on gabbro). Both bind to the
 same `RESOURCE_ID_SPLASH`, so the layout code never branches on platform.
 
+The mission screen puts an art band between the HUD and the rows: a pixel icon
+for whatever is highlighted -- the body's type in SYSTEM, the op in OPS. The
+band is 50px tall with a 48x48 icon on emery and gabbro, and 36px with a 24x24
+icon everywhere else, so the 144- and 180-wide screens keep enough height to
+scroll the rows. Both sizes bind to the same `RESOURCE_ID_ART_*`, the way the
+splash does, so the layout code never branches on platform. Only the
+highlighted row's bitmap is resident, so the band costs one bitmap of heap
+rather than twelve.
+
+The icons are generated, not hand-drawn files: `python3 scripts/gen_art.py`
+redraws `resources/art/*.png` from the 24x24 designs in that script, at both
+scales.
+
 - **Up / Down** - move through the SYSTEM and OPS lists
 - **Select** - start the highlighted action, or confirm an event choice
 - **Back** - leave the mission log or guide, or return from the mission to the menu

@@ -4,12 +4,17 @@
 
 // The HUD band and its action progress bar. Emery and gabbro have the pixels for
 // a chunkier bar, and the band grows to keep it clear of the status line.
+// The icon band goes with it: the 200-wide screens can spend 50px on a 48px
+// icon, the narrower ones get a 24px icon in a 36px band so the rows keep
+// enough of the screen to scroll.
 #if PBL_DISPLAY_WIDTH >= 200
 #define HUD_H         46
 #define BAR_H          8
+#define ART_H         50
 #else
 #define HUD_H         38
 #define BAR_H          3
+#define ART_H         36
 #endif
 #define ROW_H         34
 #define ROOT_PAD       5     // main-menu rows sit this far below their cell top
@@ -26,8 +31,9 @@
 #endif
 
 static Window *s_menu_window, *s_main_window, *s_event_window, *s_ledger_window;
-static Layer *s_hud_layer, *s_event_layer, *s_masthead;
-static GBitmap *s_splash;
+static Layer *s_hud_layer, *s_event_layer, *s_masthead, *s_art_layer;
+static GBitmap *s_splash, *s_art;
+static uint32_t s_art_id;   // resource currently in s_art, 0 = none loaded
 static MenuLayer *s_root_menu, *s_menu;
 static ScrollLayer *s_scroll;
 static TextLayer *s_ledger_text;
@@ -170,6 +176,70 @@ static uint32_t struct_sig(void) {
                            (b->forfeited << 3) | (b->monitored << 4));
   }
   return s;
+}
+
+// ---- option art ------------------------------------------------------------
+// Every row has an icon in the band under the HUD. Only the highlighted row's
+// bitmap is resident: aplite has a few kilobytes of heap for the whole app, so
+// twelve resident bitmaps is not a trade it can make.
+
+static uint32_t art_for_selection(void) {
+  MenuIndex idx = menu_layer_get_selected_index(s_menu);
+
+  if (idx.section == 0) {
+    if (!g.system_scanned || idx.row >= g.body_count) return RESOURCE_ID_ART_SURVEY;
+    switch (g.bodies[idx.row].type) {
+      case BT_ASTEROID: return RESOURCE_ID_ART_ASTEROID;
+      case BT_MOON:     return RESOURCE_ID_ART_MOON;
+      case BT_PLANET:   return RESOURCE_ID_ART_PLANET;
+      default:          return RESOURCE_ID_ART_ANOMALY;
+    }
+  }
+
+  if (idx.row >= s_ops_n) return RESOURCE_ID_ART_SURVEY;
+  switch (s_ops[idx.row].act) {
+    case ACT_BUILD_POWER:   return RESOURCE_ID_ART_POWER;
+    case ACT_BUILD_WORKER:  return RESOURCE_ID_ART_WORKER;
+    case ACT_BUILD_FACTORY: return RESOURCE_ID_ART_FACTORY;
+    case ACT_FRAME:         return RESOURCE_ID_ART_FRAME;
+    case ACT_RING:          return RESOURCE_ID_ART_RING;
+    case ACT_LOG:           return RESOURCE_ID_ART_LOG;
+    case ACT_GUIDE:         return RESOURCE_ID_ART_GUIDE;
+    default:                return RESOURCE_ID_ART_SURVEY;
+  }
+}
+
+// Swap the resident bitmap if the highlighted row calls for a different one.
+static void art_sync(void) {
+  uint32_t want = art_for_selection();
+  if (want == s_art_id && s_art) return;
+
+  if (s_art) { gbitmap_destroy(s_art); s_art = NULL; }
+  s_art = gbitmap_create_with_resource(want);
+  s_art_id = s_art ? want : 0;
+  if (s_art_layer) layer_mark_dirty(s_art_layer);
+}
+
+static void art_update(Layer *layer, GContext *ctx) {
+  GRect b = layer_get_bounds(layer);
+
+  graphics_context_set_fill_color(ctx, col_bg());
+  graphics_fill_rect(ctx, b, 0, GCornerNone);
+
+  if (s_art) {
+    GSize sz = gbitmap_get_bounds(s_art).size;
+    graphics_draw_bitmap_in_rect(ctx, s_art,
+                                 GRect((b.size.w - sz.w) / 2, (b.size.h - 1 - sz.h) / 2,
+                                       sz.w, sz.h));
+  }
+
+  // A rule closes the band off from the rows, the way the masthead does.
+  graphics_context_set_stroke_color(ctx, col_fg());
+  graphics_draw_line(ctx, GPoint(0, b.size.h - 1), GPoint(b.size.w, b.size.h - 1));
+}
+
+static void menu_selection_changed(MenuLayer *m, MenuIndex now, MenuIndex before, void *c) {
+  art_sync();
 }
 
 // ---- HUD -------------------------------------------------------------------
@@ -349,6 +419,7 @@ static void menu_select(MenuLayer *m, MenuIndex *idx, void *c) {
   game_start_action(act, target);
   layer_mark_dirty(s_hud_layer);
   menu_layer_reload_data(s_menu);
+  art_sync();
 }
 
 // ---- event panel -----------------------------------------------------------
@@ -405,6 +476,7 @@ static void event_select(ClickRecognizerRef r, void *c) {
   events_resolve(s_event_sel);
   window_stack_remove(s_event_window, false);
   menu_layer_reload_data(s_menu);
+  art_sync();
   layer_mark_dirty(s_hud_layer);
   if (g.phase == PHASE_OVER) ui_show_ledger();
 }
@@ -550,6 +622,7 @@ static void on_timer(void *ctx) {
       s_struct_sig = sig;
       build_ops();
       menu_layer_reload_data(s_menu);
+      art_sync();
     } else {
       layer_mark_dirty(menu_layer_get_layer(s_menu));
     }
@@ -572,7 +645,12 @@ static void main_load(Window *w) {
   layer_set_update_proc(s_hud_layer, hud_update);
   layer_add_child(root, s_hud_layer);
 
-  s_menu = menu_layer_create(GRect(0, HUD_H, b.size.w, b.size.h - HUD_H));
+  s_art_layer = layer_create(GRect(0, HUD_H, b.size.w, ART_H));
+  layer_set_update_proc(s_art_layer, art_update);
+  layer_add_child(root, s_art_layer);
+
+  const int16_t menu_top = HUD_H + ART_H;
+  s_menu = menu_layer_create(GRect(0, menu_top, b.size.w, b.size.h - menu_top));
   menu_layer_set_callbacks(s_menu, NULL, (MenuLayerCallbacks) {
     .get_num_sections = menu_sections,
     .get_num_rows = menu_rows,
@@ -581,6 +659,7 @@ static void main_load(Window *w) {
     .draw_header = menu_draw_header,
     .draw_row = menu_draw_row,
     .select_click = menu_select,
+    .selection_changed = menu_selection_changed,
   });
   menu_layer_set_normal_colors(s_menu, col_bg(), col_fg());
   menu_layer_set_highlight_colors(s_menu, col_accent(), GColorBlack);
@@ -590,6 +669,8 @@ static void main_load(Window *w) {
   menu_layer_set_click_config_onto_window(s_menu, w);
   layer_add_child(root, menu_layer_get_layer(s_menu));
 
+  art_sync();
+
   s_running = true;
   s_timer = app_timer_register(TICK_MS, on_timer, NULL);
 }
@@ -598,7 +679,11 @@ static void main_unload(Window *w) {
   s_running = false;
   if (s_timer) { app_timer_cancel(s_timer); s_timer = NULL; }
   menu_layer_destroy(s_menu);
+  layer_destroy(s_art_layer);
+  s_art_layer = NULL;
   layer_destroy(s_hud_layer);
+  if (s_art) { gbitmap_destroy(s_art); s_art = NULL; }
+  s_art_id = 0;
 }
 
 // ---- main menu -------------------------------------------------------------
