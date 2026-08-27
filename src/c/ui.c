@@ -2,20 +2,42 @@
 #include "game.h"
 #include "events.h"
 
-// The HUD band and its action progress bar. Emery and gabbro have the pixels for
-// a chunkier bar, and the band grows to keep it clear of the status line.
-// The icon band goes with it: the 200-wide screens can spend 50px on a 48px
-// icon, the narrower ones get a 24px icon in a 36px band so the rows keep
-// enough of the screen to scroll.
+// The readout band under the status line: the P/M/W pools in a column on the
+// left, the highlighted option's icon in the middle, the running action and the
+// clock on the right. Emery and gabbro have the pixels for a chunkier progress
+// bar and a bigger icon; the narrower screens get a 24px one.
 #if PBL_DISPLAY_WIDTH >= 200
-#define HUD_H         46
 #define BAR_H          8
 #define ART_H         50
 #else
-#define HUD_H         38
 #define BAR_H          3
 #define ART_H         36
 #endif
+#define STAT_H        16     // one line of the P/M/W column
+
+// A round screen runs the same three columns inside the circle rather than
+// across the full width. The cap is too narrow to hold a row of text, so the
+// columns start below it, and each row down the band is inset by the circle's
+// own chord at that height -- so the columns widen as they descend instead of
+// every row crowding into the narrowest one.
+#ifdef PBL_ROUND
+#if PBL_DISPLAY_WIDTH >= 200
+#define BAND_TOP      24     // gabbro, r=130
+#else
+#define BAND_TOP      22     // chalk, r=90
+#endif
+#define BAND_BIAS      9     // icon nudged off-centre, see band_update
+#else
+#define BAND_TOP       0
+#define BAND_PAD       3
+#define BAND_BIAS      0
+#endif
+#if ART_H >= 3 * STAT_H
+#define BAND_H        (BAND_TOP + ART_H)
+#else
+#define BAND_H        (BAND_TOP + 3 * STAT_H)
+#endif
+
 #define ROW_H         34
 #define ROOT_PAD       5     // main-menu rows sit this far below their cell top
 // The "UNPACK" band above the splash art. Wide screens have the room for a
@@ -31,7 +53,7 @@
 #endif
 
 static Window *s_menu_window, *s_main_window, *s_event_window, *s_ledger_window;
-static Layer *s_hud_layer, *s_event_layer, *s_masthead, *s_art_layer;
+static Layer *s_band_layer, *s_event_layer, *s_masthead;
 static GBitmap *s_splash, *s_art;
 static uint32_t s_art_id;   // resource currently in s_art, 0 = none loaded
 static MenuLayer *s_root_menu, *s_menu;
@@ -217,70 +239,117 @@ static void art_sync(void) {
   if (s_art) { gbitmap_destroy(s_art); s_art = NULL; }
   s_art = gbitmap_create_with_resource(want);
   s_art_id = s_art ? want : 0;
-  if (s_art_layer) layer_mark_dirty(s_art_layer);
+  if (s_band_layer) layer_mark_dirty(s_band_layer);
 }
 
-static void art_update(Layer *layer, GContext *ctx) {
-  GRect b = layer_get_bounds(layer);
+static int16_t art_width(void) {
+  return s_art ? gbitmap_get_bounds(s_art).size.w : 0;
+}
 
-  graphics_context_set_fill_color(ctx, col_bg());
-  graphics_fill_rect(ctx, b, 0, GCornerNone);
-
-  if (s_art) {
-    GSize sz = gbitmap_get_bounds(s_art).size;
-    graphics_draw_bitmap_in_rect(ctx, s_art,
-                                 GRect((b.size.w - sz.w) / 2, (b.size.h - 1 - sz.h) / 2,
-                                       sz.w, sz.h));
-  }
-
-  // A rule closes the band off from the rows, the way the masthead does.
-  graphics_context_set_stroke_color(ctx, col_fg());
-  graphics_draw_line(ctx, GPoint(0, b.size.h - 1), GPoint(b.size.w, b.size.h - 1));
+static void draw_art(GContext *ctx, GRect cell) {
+  if (!s_art) return;
+  GSize sz = gbitmap_get_bounds(s_art).size;
+  graphics_draw_bitmap_in_rect(ctx, s_art,
+                               GRect(cell.origin.x + (cell.size.w - sz.w) / 2,
+                                     cell.origin.y + (cell.size.h - sz.h) / 2, sz.w, sz.h));
 }
 
 static void menu_selection_changed(MenuLayer *m, MenuIndex now, MenuIndex before, void *c) {
   art_sync();
 }
 
-// ---- HUD -------------------------------------------------------------------
+// ---- readout band ----------------------------------------------------------
 
-static void hud_update(Layer *layer, GContext *ctx) {
+// Progress bar for the running action; a thin rule when idle.
+static void draw_bar(GContext *ctx, GRect r) {
+  if (g.phase == PHASE_ACTION && g.action_total > 0) {
+    uint16_t done = g.action_total - g.action_left;
+    graphics_context_set_stroke_color(ctx, col_fg());
+    graphics_draw_rect(ctx, r);
+    graphics_context_set_fill_color(ctx, col_accent());
+    graphics_fill_rect(ctx, GRect(r.origin.x, r.origin.y,
+                                  (int16_t)((r.size.w * done) / g.action_total), r.size.h),
+                       0, GCornerNone);
+  } else {
+    graphics_context_set_fill_color(ctx, col_fg());
+    graphics_fill_rect(ctx, GRect(r.origin.x, r.origin.y + r.size.h / 2, r.size.w, 1),
+                       0, GCornerNone);
+  }
+}
+
+// How far in from the edge row `y` has to start. A rectangle answers the same
+// for every row; a circle gives back its chord, so the rows step outwards as
+// they go down and the band follows the bezel instead of squaring off inside it.
+static int16_t band_pad(int16_t y) {
+#ifdef PBL_ROUND
+  const int32_t r = PBL_DISPLAY_WIDTH / 2;
+  int32_t dy = r - y, w2 = r * r - dy * dy, w = 0;
+  if (w2 < 0) w2 = 0;
+  while ((w + 1) * (w + 1) <= w2) w++;
+  return (int16_t)(r - w);
+#else
+  (void)y;
+  return BAND_PAD;
+#endif
+}
+
+static void draw_stat(GContext *ctx, char tag, int16_t v, GColor c, GRect r) {
+  char buf[12];
+  snprintf(buf, sizeof(buf), "%c%d", tag, v);
+  graphics_context_set_text_color(ctx, c);
+  graphics_draw_text(ctx, buf, s_f14b, r,
+                     GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
+}
+
+static void band_update(Layer *layer, GContext *ctx) {
   GRect b = layer_get_bounds(layer);
-  char buf[40];
+  char buf[24];
 
   graphics_context_set_fill_color(ctx, col_bg());
   graphics_fill_rect(ctx, b, 0, GCornerNone);
 
-  const int pad = PBL_IF_ROUND_ELSE(20, 3);
-  const GTextAlignment al = PBL_IF_ROUND_ELSE(GTextAlignmentCenter, GTextAlignmentLeft);
+  // The icon is centred, then nudged left by BAND_BIAS: the pool figures are
+  // three characters wide, an action name and "T+9999yr" are not, so the two
+  // columns want different room. On a rectangle there is enough of both and the
+  // bias is zero. The icon keeps its column; only the outer edges follow the
+  // curve, row by row.
+  const int16_t gap = 3;
+  const int16_t iw = art_width();
+  const int16_t ix = (b.size.w - iw) / 2 - BAND_BIAS;
+  const int16_t rx = ix + iw + gap;
 
-  snprintf(buf, sizeof(buf), "P%d  M%d  W%d", g.power, g.materials, g.workers);
-  graphics_context_set_text_color(ctx, col_level(g.materials, 20, 8));
-  graphics_draw_text(ctx, buf, s_f14b, GRect(pad, -3, b.size.w - 2 * pad, 18),
-                     GTextOverflowModeTrailingEllipsis, al, NULL);
+  for (uint8_t line = 0; line < 3; line++) {
+    int16_t y = BAND_TOP + line * STAT_H, pad = band_pad(y);
+    GRect l = GRect(pad, y - 3, ix - pad - gap, 18);
+    GRect r = GRect(rx, y - 3, b.size.w - pad - rx, 18);
 
-  if (g.phase == PHASE_ACTION) {
-    snprintf(buf, sizeof(buf), "%s  T+%luyr", game_action_name(g.action), (unsigned long)g.cycle);
-  } else {
-    snprintf(buf, sizeof(buf), "IDLE  T+%luyr", (unsigned long)g.cycle);
+    switch (line) {
+      case 0:
+        draw_stat(ctx, 'P', g.power, col_fg(), l);
+        graphics_context_set_text_color(ctx, col_fg());
+        graphics_draw_text(ctx, g.phase == PHASE_ACTION ? game_action_name(g.action) : "IDLE",
+                           s_f14b, r, GTextOverflowModeTrailingEllipsis,
+                           GTextAlignmentRight, NULL);
+        break;
+      case 1:
+        draw_stat(ctx, 'M', g.materials, col_level(g.materials, 20, 8), l);
+        snprintf(buf, sizeof(buf), "T+%luyr", (unsigned long)g.cycle);
+        graphics_context_set_text_color(ctx, col_fg());
+        graphics_draw_text(ctx, buf, s_f14, r, GTextOverflowModeTrailingEllipsis,
+                           GTextAlignmentRight, NULL);
+        break;
+      default:
+        draw_stat(ctx, 'W', g.workers, col_fg(), l);
+        draw_bar(ctx, GRect(rx, y + (STAT_H - BAR_H) / 2, r.size.w, BAR_H));
+        break;
+    }
   }
-  graphics_context_set_text_color(ctx, col_fg());
-  graphics_draw_text(ctx, buf, s_f14, GRect(pad, 12, b.size.w - 2 * pad, 18),
-                     GTextOverflowModeTrailingEllipsis, al, NULL);
 
-  // Progress bar for the running action; a thin rule when idle.
-  int16_t bx = pad, bw = b.size.w - 2 * pad, by = b.size.h - BAR_H - 5;
-  graphics_context_set_fill_color(ctx, col_fg());
-  if (g.phase == PHASE_ACTION && g.action_total > 0) {
-    uint16_t done = g.action_total - g.action_left;
-    graphics_context_set_stroke_color(ctx, col_fg());
-    graphics_draw_rect(ctx, GRect(bx, by, bw, BAR_H));
-    graphics_context_set_fill_color(ctx, col_accent());
-    graphics_fill_rect(ctx, GRect(bx, by, (int16_t)((bw * done) / g.action_total), BAR_H),
-                       0, GCornerNone);
-  } else {
-    graphics_fill_rect(ctx, GRect(bx, by + BAR_H / 2, bw, 1), 0, GCornerNone);
-  }
+  draw_art(ctx, GRect(ix, BAND_TOP, iw, b.size.h - BAND_TOP - 1));
+
+  // A rule closes the band off from the rows, the way the masthead does.
+  graphics_context_set_stroke_color(ctx, col_fg());
+  graphics_draw_line(ctx, GPoint(0, b.size.h - 1), GPoint(b.size.w, b.size.h - 1));
 }
 
 // ---- menu ------------------------------------------------------------------
@@ -417,7 +486,7 @@ static void menu_select(MenuLayer *m, MenuIndex *idx, void *c) {
     return;
   }
   game_start_action(act, target);
-  layer_mark_dirty(s_hud_layer);
+  layer_mark_dirty(s_band_layer);
   menu_layer_reload_data(s_menu);
   art_sync();
 }
@@ -477,7 +546,7 @@ static void event_select(ClickRecognizerRef r, void *c) {
   window_stack_remove(s_event_window, false);
   menu_layer_reload_data(s_menu);
   art_sync();
-  layer_mark_dirty(s_hud_layer);
+  layer_mark_dirty(s_band_layer);
   if (g.phase == PHASE_OVER) ui_show_ledger();
 }
 
@@ -616,7 +685,7 @@ static void on_timer(void *ctx) {
   }
 
   if (advanced) {
-    layer_mark_dirty(s_hud_layer);
+    layer_mark_dirty(s_band_layer);
     uint32_t sig = struct_sig();
     if (sig != s_struct_sig) {
       s_struct_sig = sig;
@@ -641,16 +710,11 @@ static void main_load(Window *w) {
   s_struct_sig = struct_sig();
   s_idle_accum = 0;
 
-  s_hud_layer = layer_create(GRect(0, 0, b.size.w, HUD_H));
-  layer_set_update_proc(s_hud_layer, hud_update);
-  layer_add_child(root, s_hud_layer);
+  s_band_layer = layer_create(GRect(0, 0, b.size.w, BAND_H));
+  layer_set_update_proc(s_band_layer, band_update);
+  layer_add_child(root, s_band_layer);
 
-  s_art_layer = layer_create(GRect(0, HUD_H, b.size.w, ART_H));
-  layer_set_update_proc(s_art_layer, art_update);
-  layer_add_child(root, s_art_layer);
-
-  const int16_t menu_top = HUD_H + ART_H;
-  s_menu = menu_layer_create(GRect(0, menu_top, b.size.w, b.size.h - menu_top));
+  s_menu = menu_layer_create(GRect(0, BAND_H, b.size.w, b.size.h - BAND_H));
   menu_layer_set_callbacks(s_menu, NULL, (MenuLayerCallbacks) {
     .get_num_sections = menu_sections,
     .get_num_rows = menu_rows,
@@ -679,9 +743,8 @@ static void main_unload(Window *w) {
   s_running = false;
   if (s_timer) { app_timer_cancel(s_timer); s_timer = NULL; }
   menu_layer_destroy(s_menu);
-  layer_destroy(s_art_layer);
-  s_art_layer = NULL;
-  layer_destroy(s_hud_layer);
+  layer_destroy(s_band_layer);
+  s_band_layer = NULL;
   if (s_art) { gbitmap_destroy(s_art); s_art = NULL; }
   s_art_id = 0;
 }

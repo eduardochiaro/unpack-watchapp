@@ -34,18 +34,28 @@ the 144-wide platforms and cropped by chalk's round bezel) and
 `resources/splash-emery.png` (200x98, also used on gabbro). Both bind to the
 same `RESOURCE_ID_SPLASH`, so the layout code never branches on platform.
 
-The mission screen puts an art band between the HUD and the rows: a pixel icon
-for whatever is highlighted -- the body's type in SYSTEM, the op in OPS. The
-band is 50px tall with a 48x48 icon on emery and gabbro, and 36px with a 24x24
-icon everywhere else, so the 144- and 180-wide screens keep enough height to
-scroll the rows. Both sizes bind to the same `RESOURCE_ID_ART_*`, the way the
-splash does, so the layout code never branches on platform. Only the
-highlighted row's bitmap is resident, so the band costs one bitmap of heap
-rather than twelve.
+The mission screen opens with a readout band, one row of three columns: the
+P/M/W pools stacked on the left, a pixel icon for whatever is highlighted in the
+middle (the body's type in SYSTEM, the op in OPS), and the running action, the
+clock and the progress bar on the right. It replaces the separate HUD and art
+strip, so the rows get the height back -- 50px on emery and gabbro, 48px on the
+rectangular 144-wide screens.
 
-The icons are generated, not hand-drawn files: `python3 scripts/gen_art.py`
-redraws `resources/art/*.png` from the 24x24 designs in that script, at both
-scales.
+Round watches run the same three columns, just inside the circle rather than
+across the full width. The cap of the circle is too narrow to hold a row of
+text, so `BAND_TOP` starts the columns below it, and `band_pad()` insets each
+row by the circle's chord at that row's height -- so the columns step outwards
+as they descend and follow the bezel, rather than every row squaring off inside
+the narrowest one. On a rectangle `band_pad()` answers the same 3px for every
+row and the layout is the same code. `BAND_BIAS` nudges the icon off-centre so
+the right-hand column, which has to hold an action name and `T+9999yr`, gets
+more room than three-character pool figures need.
+
+The icons live in `resources/art/` at 48x48 for the 200-wide-and-up screens and
+24x24 for the rest, both bound to the same `RESOURCE_ID_ART_*` the way the
+splash is, so the layout code never branches on platform for them. Only the
+highlighted row's bitmap is resident: the band costs one bitmap of heap rather
+than twelve.
 
 - **Up / Down** - move through the SYSTEM and OPS lists
 - **Select** - start the highlighted action, or confirm an event choice
