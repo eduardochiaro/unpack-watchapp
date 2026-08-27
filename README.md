@@ -76,7 +76,9 @@ prerequisites are met the ring row reports what is still missing instead of a
 price.
 
 One action runs at a time. While an action runs, in-game time fast-forwards;
-while idle, it still advances, just slower. Narrative events interrupt either
+while idle, it still advances, just slower. Opening the mission log or the guide
+stops the clock -- they are reference, not play -- and Back resumes the run
+where it left off. Narrative events interrupt either
 one and freeze time until answered. The run ends when the orbital ring closes
 and the probe departs, when the system collapses, or when an event resolves
 catastrophically -- then the mission log becomes the ledger.

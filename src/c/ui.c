@@ -663,6 +663,15 @@ static void ui_show_guide(void) {
 
 static void on_timer(void *ctx) {
   if (!s_running) { s_timer = NULL; return; }
+
+  // Reading stops the clock. The log and the guide are reference, not play, so
+  // no cycle passes while either is on screen -- the timer keeps ticking over so
+  // the run picks straight back up on Back.
+  if (window_stack_contains_window(s_ledger_window)) {
+    s_timer = app_timer_register(TICK_MS, on_timer, NULL);
+    return;
+  }
+
   bool advanced = false;
 
   if (g.phase == PHASE_ACTION) {
