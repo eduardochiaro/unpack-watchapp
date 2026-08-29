@@ -63,7 +63,16 @@ static AppTimer *s_timer;
 static bool s_running;      // the sim clock only runs while the main screen is up
 static bool s_has_save;     // a session worth offering "Continue" for
 
-static uint8_t s_idle_accum;
+static void on_timer(void *ctx);
+
+// Pull the next tick forward. A screen that froze the run polls slowly, so the
+// run would otherwise sit idle for the rest of that poll after it closes.
+static void clock_kick(void) {
+  if (!s_running) return;
+  if (s_timer) app_timer_cancel(s_timer);
+  s_timer = app_timer_register(TICK_MS, on_timer, NULL);
+}
+
 static uint8_t s_event_sel;
 static uint32_t s_struct_sig;
 static char s_ledger[LOG_MAX * (LOG_LEN + 1) + 8];
@@ -486,6 +495,7 @@ static void menu_select(MenuLayer *m, MenuIndex *idx, void *c) {
     return;
   }
   game_start_action(act, target);
+  clock_kick();                 // idle polls slowly; the action starts now
   layer_mark_dirty(s_band_layer);
   menu_layer_reload_data(s_menu);
   art_sync();
@@ -593,6 +603,7 @@ static void event_down(ClickRecognizerRef r, void *c) {
 static void event_select(ClickRecognizerRef r, void *c) {
   events_resolve(s_event_sel);
   window_stack_remove(s_event_window, false);
+  clock_kick();
   menu_layer_reload_data(s_menu);
   art_sync();
   layer_mark_dirty(s_band_layer);
@@ -717,6 +728,7 @@ static void ledger_load(Window *w) {
 }
 
 static void ledger_unload(Window *w) {
+  clock_kick();               // Back out of the log and the run resumes at once
   text_layer_destroy(s_ledger_text);
   scroll_layer_destroy(s_scroll);
   free(s_guide);            // the guide text is only worth heap while it is on screen
@@ -737,6 +749,28 @@ static void ui_show_guide(void) {
 
 // ---- clock -----------------------------------------------------------------
 
+// Wakeups follow the phase. A running action needs the full cadence for the
+// progress bar and the clock; idle only produces a cycle every IDLE_DIVISOR
+// ticks, so waking in between burns battery to do nothing; and a frozen screen
+// -- the event panel, the log, the guide -- has no work at all until the user
+// acts, so it polls at a rate that only exists to notice they have.
+static uint32_t tick_delay(void) {
+  if (window_stack_contains_window(s_ledger_window)) return TICK_MS * 5;
+  if (g.phase == PHASE_ACTION) return TICK_MS;
+  if (g.phase == PHASE_EVENT)  return TICK_MS * 5;
+  return TICK_MS * IDLE_DIVISOR;
+}
+
+// Row subtitles count down only while a rig is depleting a body. With none
+// running the list is the same pixels tick after tick, and redrawing it is
+// pure drain.
+static bool rows_tick(void) {
+  for (uint8_t i = 0; i < g.body_count; i++) {
+    if (g.bodies[i].rig && g.bodies[i].remaining > 0) return true;
+  }
+  return false;
+}
+
 static void on_timer(void *ctx) {
   s_timer = NULL;   // the handle is spent the moment its callback runs
   if (!s_running) return;
@@ -745,7 +779,7 @@ static void on_timer(void *ctx) {
   // no cycle passes while either is on screen -- the timer keeps ticking over so
   // the run picks straight back up on Back.
   if (window_stack_contains_window(s_ledger_window)) {
-    s_timer = app_timer_register(TICK_MS, on_timer, NULL);
+    s_timer = app_timer_register(tick_delay(), on_timer, NULL);
     return;
   }
 
@@ -755,12 +789,10 @@ static void on_timer(void *ctx) {
     game_tick();
     advanced = true;
   } else if (g.phase == PHASE_IDLE) {
-    // Idle is not safe time: the world keeps moving, just slower.
-    if (++s_idle_accum >= IDLE_DIVISOR) {
-      s_idle_accum = 0;
-      game_tick();
-      advanced = true;
-    }
+    // Idle is not safe time: the world keeps moving, just slower -- one cycle
+    // per IDLE_DIVISOR ticks, which is the wait tick_delay() sleeps out.
+    game_tick();
+    advanced = true;
   }
 
   // Screen ownership follows the phase, not whether a cycle happened to advance.
@@ -783,12 +815,12 @@ static void on_timer(void *ctx) {
       build_ops();
       menu_layer_reload_data(s_menu);
       art_sync();
-    } else {
+    } else if (rows_tick()) {
       layer_mark_dirty(menu_layer_get_layer(s_menu));
     }
   }
 
-  s_timer = app_timer_register(TICK_MS, on_timer, NULL);
+  s_timer = app_timer_register(tick_delay(), on_timer, NULL);
 }
 
 // ---- main window -----------------------------------------------------------
@@ -799,7 +831,6 @@ static void main_load(Window *w) {
 
   build_ops();
   s_struct_sig = struct_sig();
-  s_idle_accum = 0;
 
   s_band_layer = layer_create(GRect(0, 0, b.size.w, BAND_H));
   layer_set_update_proc(s_band_layer, band_update);
@@ -827,7 +858,7 @@ static void main_load(Window *w) {
   art_sync();
 
   s_running = true;
-  s_timer = app_timer_register(TICK_MS, on_timer, NULL);
+  s_timer = app_timer_register(tick_delay(), on_timer, NULL);
 }
 
 static void main_unload(Window *w) {
