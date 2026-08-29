@@ -5,3 +5,4 @@ node_modules/
 .pebble/
 .lock-waf_darwin_build
 .vscode/settings.json
+CLAUDE.md

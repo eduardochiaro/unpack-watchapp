@@ -68,7 +68,7 @@ static uint8_t s_event_sel;
 static uint32_t s_struct_sig;
 static char s_ledger[LOG_MAX * (LOG_LEN + 1) + 8];
 
-static GFont s_f14, s_f14b, s_title_font;
+static GFont s_f14, s_f14b, s_title_font, s_fevent, s_feventb;
 
 typedef struct { ActionKind act; } OpRow;
 static OpRow s_ops[10];
@@ -493,39 +493,88 @@ static void menu_select(MenuLayer *m, MenuIndex *idx, void *c) {
 
 // ---- event panel -----------------------------------------------------------
 
+// The whole panel scales together: emery and gabbro have the pixels for a
+// finger-sized choice row, a bigger face in it, and the same face for the header
+// and the prose; the 144-wide screens keep the compact row and the 14pt text.
+// On a round screen the bottom of the display is the narrowest part of the
+// circle, so the choice stack is lifted clear of the pinch rather than run to
+// the edge.
+#if PBL_DISPLAY_WIDTH >= 200
+#define CHOICE_H      30
+#define CHOICE_DY      3     // text inset inside its row, centres the glyphs
+#define CHOICE_BOT    PBL_IF_ROUND_ELSE(26, 4)
+#define EVENT_FONT    FONT_KEY_GOTHIC_18
+#define EVENT_FONT_B  FONT_KEY_GOTHIC_18_BOLD
+#define EVENT_HDR_H   24     // the header bar has to hold the bigger face
+#else
+#define CHOICE_H      17
+#define CHOICE_DY     -3
+#define CHOICE_BOT     2
+#define EVENT_FONT    FONT_KEY_GOTHIC_14
+#define EVENT_FONT_B  FONT_KEY_GOTHIC_14_BOLD
+#define EVENT_HDR_H   18
+#endif
+
+// A round screen cannot use its top edge: the cap is too narrow to hold the
+// header bar. The panel starts below it, at the same inset the main band uses.
+#ifdef PBL_ROUND
+#define EVENT_TOP     BAND_TOP
+#else
+#define EVENT_TOP     0
+#endif
+
+// Choices are bottom-anchored so they are never pushed off screen by long text.
+// Drawing and the touch hit-test both start from here, so they cannot drift.
+static int16_t choices_top(int16_t h, uint8_t n) { return h - n * CHOICE_H - CHOICE_BOT; }
+
 static void event_update(Layer *layer, GContext *ctx) {
   GRect b = layer_get_bounds(layer);
   const int pad = PBL_IF_ROUND_ELSE(18, 4);
   const uint8_t n = events_choice_count();
-  const int16_t choice_h = 17;
 
   graphics_context_set_fill_color(ctx, col_bg());
   graphics_fill_rect(ctx, b, 0, GCornerNone);
 
-  // Header bar
+  // Header bar. On a round screen it is pulled in to the circle's chord at its
+  // own top edge -- its widest row is the one furthest down -- so the whole bar
+  // lands inside the bezel instead of being sliced by it.
+  const int16_t hx = PBL_IF_ROUND_ELSE(band_pad(EVENT_TOP), 0);
+  GRect hb = GRect(hx, EVENT_TOP, b.size.w - 2 * hx, EVENT_HDR_H);
   graphics_context_set_fill_color(ctx, col_accent());
-  graphics_fill_rect(ctx, GRect(0, 0, b.size.w, 18), 0, GCornerNone);
+  graphics_fill_rect(ctx, hb, 0, GCornerNone);
   graphics_context_set_text_color(ctx, GColorBlack);
-  graphics_draw_text(ctx, events_header(), s_f14b, GRect(pad, -3, b.size.w - 2 * pad, 18),
+  graphics_draw_text(ctx, events_header(), s_feventb,
+                     GRect(hb.origin.x, hb.origin.y - 3, hb.size.w, hb.size.h),
                      GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
 
-  // Choices are bottom-anchored so they are never pushed off screen by long text.
-  int16_t choices_y = b.size.h - n * choice_h - 2;
-  GRect tr = GRect(pad, 20, b.size.w - 2 * pad, choices_y - 22);
+  int16_t choices_y = choices_top(b.size.h, n);
+  const GTextAlignment tal = PBL_IF_ROUND_ELSE(GTextAlignmentCenter, GTextAlignmentLeft);
+  const int16_t ty = EVENT_TOP + EVENT_HDR_H + 2;
+  const int16_t tx = PBL_IF_ROUND_ELSE(band_pad(ty), pad);
+  GRect tr = GRect(tx, ty, b.size.w - 2 * tx, choices_y - ty - 2);
+
+  // The bigger face is what the screen is for, but the longest event text does
+  // not always fit in what the choices leave -- gabbro's circle in particular
+  // gives back a narrow column. Measure it and step down a size rather than
+  // wrap off the bottom edge.
+  GFont tf = s_fevent;
+  if (graphics_text_layout_get_content_size(events_text(), tf, tr,
+                                            GTextOverflowModeWordWrap, tal).h > tr.size.h) {
+    tf = s_f14;
+  }
   graphics_context_set_text_color(ctx, col_fg());
-  graphics_draw_text(ctx, events_text(), s_f14, tr, GTextOverflowModeWordWrap,
-                     PBL_IF_ROUND_ELSE(GTextAlignmentCenter, GTextAlignmentLeft), NULL);
+  graphics_draw_text(ctx, events_text(), tf, tr, GTextOverflowModeWordWrap, tal, NULL);
 
   for (uint8_t i = 0; i < n; i++) {
-    GRect row = GRect(0, choices_y + i * choice_h, b.size.w, choice_h);
+    GRect row = GRect(0, choices_y + i * CHOICE_H, b.size.w, CHOICE_H);
     bool sel = (i == s_event_sel);
     if (sel) {
       graphics_context_set_fill_color(ctx, col_fg());
       graphics_fill_rect(ctx, row, 0, GCornerNone);
     }
     graphics_context_set_text_color(ctx, sel ? GColorBlack : col_fg());
-    graphics_draw_text(ctx, events_choice(i), s_f14,
-                       GRect(pad, row.origin.y - 3, b.size.w - 2 * pad, choice_h + 4),
+    graphics_draw_text(ctx, events_choice(i), s_fevent,
+                       GRect(pad, row.origin.y + CHOICE_DY, b.size.w - 2 * pad, CHOICE_H + 4),
                        GTextOverflowModeTrailingEllipsis,
                        PBL_IF_ROUND_ELSE(GTextAlignmentCenter, GTextAlignmentLeft), NULL);
   }
@@ -550,6 +599,26 @@ static void event_select(ClickRecognizerRef r, void *c) {
   if (g.phase == PHASE_OVER) ui_show_ledger();
 }
 
+#ifdef PBL_TOUCH
+// The panel is hand-drawn, so the system touch bridge -- which only knows how to
+// drive a MenuLayer or a ScrollLayer -- has nothing here to map. This window
+// takes the raw touch stream instead and hit-tests the choice rows itself.
+static void event_tap(const Recognizer *r, RecognizerEvent ev) {
+  if (ev != RecognizerEvent_Completed) return;
+  const uint8_t n = events_choice_count();
+  if (n == 0) return;
+
+  int16_t y = tap_recognizer_get_tap_point(r).y;
+  int16_t top = choices_top(layer_get_bounds(s_event_layer).size.h, n);
+  if (y < top) return;                        // taps on the prose are not a choice
+
+  uint8_t row = (uint8_t)((y - top) / CHOICE_H);
+  if (row >= n) row = n - 1;                  // the last row owns the bottom margin
+  s_event_sel = row;
+  event_select(NULL, NULL);
+}
+#endif
+
 static void event_clicks(void *c) {
   window_single_click_subscribe(BUTTON_ID_UP, event_up);
   window_single_click_subscribe(BUTTON_ID_DOWN, event_down);
@@ -562,6 +631,13 @@ static void event_load(Window *w) {
   s_event_layer = layer_create(layer_get_bounds(root));
   layer_set_update_proc(s_event_layer, event_update);
   layer_add_child(root, s_event_layer);
+
+#ifdef PBL_TOUCH
+  // The bridge has to be off for this window or the system recognizers swallow
+  // the gesture before ours sees it. The window owns the recognizer from here.
+  window_set_touch_bridge_disabled(w, true);
+  window_attach_recognizer(w, tap_recognizer_create(event_tap, NULL));
+#endif
 }
 
 static void event_unload(Window *w) { layer_destroy(s_event_layer); }
@@ -859,8 +935,17 @@ void ui_init(void) {
   s_f14  = fonts_get_system_font(FONT_KEY_GOTHIC_14);
   s_f14b = fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD);
   s_title_font = fonts_get_system_font(TITLE_FONT);
+  s_fevent  = fonts_get_system_font(EVENT_FONT);
+  s_feventb = fonts_get_system_font(EVENT_FONT_B);
 
   s_has_save = session_load();
+
+#ifdef PBL_TOUCH
+  // Opt in to system touch navigation: on emery and gabbro it scrolls the menus
+  // and the ledger by finger, taps a row to select it, and swipes back. Apps are
+  // opted out by default. The event panel opts back out again, see event_load.
+  app_touch_navigation_enable(true);
+#endif
 
   s_menu_window = window_create();
   window_set_background_color(s_menu_window, col_bg());
