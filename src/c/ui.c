@@ -738,7 +738,8 @@ static void ui_show_guide(void) {
 // ---- clock -----------------------------------------------------------------
 
 static void on_timer(void *ctx) {
-  if (!s_running) { s_timer = NULL; return; }
+  s_timer = NULL;   // the handle is spent the moment its callback runs
+  if (!s_running) return;
 
   // Reading stops the clock. The log and the guide are reference, not play, so
   // no cycle passes while either is on screen -- the timer keeps ticking over so
@@ -768,6 +769,11 @@ static void on_timer(void *ctx) {
   } else if (g.phase == PHASE_EVENT && !window_stack_contains_window(s_event_window)) {
     ui_show_event();
   }
+
+  // Ending the mission takes the main window down with it -- the ledger replaces
+  // it -- and main_unload has already freed the band and the menu by now. There
+  // is nothing left below to redraw, and no run left to schedule a tick for.
+  if (!s_running) return;
 
   if (advanced) {
     layer_mark_dirty(s_band_layer);

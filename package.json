@@ -1,9 +1,12 @@
 {
   "name": "unpack-watchapp",
-  "author": "MakeAwesomeHappen",
+  "author": "Eduardo Chiaro",
   "version": "1.0.0",
   "keywords": [
-    "pebble-app"
+    "pebble-app",
+    "pebble",
+    "game",
+    "unpack"
   ],
   "scripts": {
     "build": "pebble clean && pebble build",
