@@ -907,7 +907,11 @@ static void root_load(Window *w) {
   // a frame that only just fits the rows still scrolls the last one under the art.
   // The splash bitmaps are cropped to leave that slack: 51px tall on the 144-wide
   // screens, 98px on emery.
-  s_root_menu = menu_layer_create(GRect(0, top, b.size.w, b.size.h));
+  // A round screen centres the selected row in the menu's own frame, so the
+  // frame has to stop at the bottom of the screen or the row centres on a point
+  // below the bezel. A rectangle keeps the overhang: it is the scroll slack.
+  s_root_menu = menu_layer_create(GRect(0, top, b.size.w,
+                                        PBL_IF_ROUND_ELSE(b.size.h - top, b.size.h)));
   menu_layer_set_callbacks(s_root_menu, NULL, (MenuLayerCallbacks) {
     .get_num_sections = root_sections,
     .get_num_rows = root_rows,
