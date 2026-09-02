@@ -7,7 +7,7 @@ Unpack yourself into power and extraction, work the bodies you find, and build
 what the colonists will arrive to -- factories, colony frames, and finally the
 orbital ring you leave through. The system keeps interrupting with decisions
 that have no clean answer, and the clock never stops for them. A run takes 2-4
-minutes, start to departure or failure. Runs entirely on the watch, no phone.
+minutes, start to departure or failure.
 
 ## Screenshots
 ### Pebble 2/Duo

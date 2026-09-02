@@ -45,7 +45,14 @@
           "file": "splash-basalt.png",
           "targetPlatforms": [
             "basalt",
-            "chalk",
+            "chalk"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "SPLASH",
+          "file": "splash-bw.png",
+          "targetPlatforms": [
             "diorite",
             "flint"
           ]
