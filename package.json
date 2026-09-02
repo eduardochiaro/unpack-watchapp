@@ -12,22 +12,15 @@
     "build": "pebble clean && pebble build",
     "emulator": "npm run build && pebble install --emulator ",
     "phone": "npm run build && pebble install --phone",
-    "config": "pebble emu-app-config --emulator",
     "screenshot": "./scripts/screenshot.sh",
-    "logs": "pebble logs",
-    "cleanup": "npm run lint && npm run format",
-    "lint": "eslint src/**/*.js",
-    "format": "prettier --write src/**/*.js test/**/*.js"
+    "logs": "pebble logs"
   },
   "private": true,
-  "dependencies": {},
   "pebble": {
     "displayName": "Unpack",
     "uuid": "bd9bfa05-1c15-4f30-af62-24f803e277c2",
     "sdkVersion": "3",
-    "enableMultiJS": true,
     "targetPlatforms": [
-      "aplite",
       "basalt",
       "chalk",
       "diorite",
@@ -38,9 +31,6 @@
     "watchapp": {
       "watchface": false
     },
-    "messageKeys": [
-      "dummy"
-    ],
     "resources": {
       "media": [
         {
@@ -54,7 +44,6 @@
           "name": "SPLASH",
           "file": "splash-basalt.png",
           "targetPlatforms": [
-            "aplite",
             "basalt",
             "chalk",
             "diorite",
@@ -75,7 +64,6 @@
           "name": "ART_SURVEY",
           "file": "art/art-survey-small.png",
           "targetPlatforms": [
-            "aplite",
             "basalt",
             "chalk",
             "diorite",
@@ -96,7 +84,6 @@
           "name": "ART_POWER",
           "file": "art/art-power-small.png",
           "targetPlatforms": [
-            "aplite",
             "basalt",
             "chalk",
             "diorite",
@@ -117,7 +104,6 @@
           "name": "ART_WORKER",
           "file": "art/art-worker-small.png",
           "targetPlatforms": [
-            "aplite",
             "basalt",
             "chalk",
             "diorite",
@@ -138,7 +124,6 @@
           "name": "ART_FACTORY",
           "file": "art/art-factory-small.png",
           "targetPlatforms": [
-            "aplite",
             "basalt",
             "chalk",
             "diorite",
@@ -159,7 +144,6 @@
           "name": "ART_FRAME",
           "file": "art/art-frame-small.png",
           "targetPlatforms": [
-            "aplite",
             "basalt",
             "chalk",
             "diorite",
@@ -180,7 +164,6 @@
           "name": "ART_RING",
           "file": "art/art-ring-small.png",
           "targetPlatforms": [
-            "aplite",
             "basalt",
             "chalk",
             "diorite",
@@ -201,7 +184,6 @@
           "name": "ART_LOG",
           "file": "art/art-log-small.png",
           "targetPlatforms": [
-            "aplite",
             "basalt",
             "chalk",
             "diorite",
@@ -222,7 +204,6 @@
           "name": "ART_GUIDE",
           "file": "art/art-guide-small.png",
           "targetPlatforms": [
-            "aplite",
             "basalt",
             "chalk",
             "diorite",
@@ -243,7 +224,6 @@
           "name": "ART_ASTEROID",
           "file": "art/art-asteroid-small.png",
           "targetPlatforms": [
-            "aplite",
             "basalt",
             "chalk",
             "diorite",
@@ -264,7 +244,6 @@
           "name": "ART_MOON",
           "file": "art/art-moon-small.png",
           "targetPlatforms": [
-            "aplite",
             "basalt",
             "chalk",
             "diorite",
@@ -285,7 +264,6 @@
           "name": "ART_PLANET",
           "file": "art/art-planet-small.png",
           "targetPlatforms": [
-            "aplite",
             "basalt",
             "chalk",
             "diorite",
@@ -306,7 +284,6 @@
           "name": "ART_ANOMALY",
           "file": "art/art-anomaly-small.png",
           "targetPlatforms": [
-            "aplite",
             "basalt",
             "chalk",
             "diorite",

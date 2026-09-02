@@ -8,8 +8,8 @@ char g_logbuf[LOG_LEN];
 void game_log_line(const char *s) {
   if (g.log_count >= LOG_MAX) {
     // Drop the oldest line rather than the newest. The end of a run is what the
-    // ledger exists to show, and on aplite only 12 lines fit -- keeping the head
-    // meant a long mission ended with its ending missing.
+    // ledger exists to show -- keeping the head meant a long mission ended with
+    // its ending missing.
     memmove(g.log[0], g.log[1], (size_t)(LOG_MAX - 1) * LOG_LEN);
     g.log_count = LOG_MAX - 1;
     g.log_full = true;
@@ -159,8 +159,7 @@ uint16_t game_duration(ActionKind k, uint8_t target) {
   return d < 3 ? 3 : d;
 }
 
-bool game_affordable(ActionKind k, uint8_t target) {
-  (void)target;
+bool game_affordable(ActionKind k) {
   if (g.materials < game_cost_mat(k)) return false;
   if (g.power < game_cost_pow(k)) return false;
   if (k == ACT_FRAME && g.workers < FRAME_WORKERS) return false;
@@ -186,7 +185,7 @@ const char *game_action_name(ActionKind k) {
 }
 
 void game_start_action(ActionKind k, uint8_t target) {
-  if (g.phase != PHASE_IDLE || !game_affordable(k, target)) return;
+  if (g.phase != PHASE_IDLE || !game_affordable(k)) return;
   g.materials -= game_cost_mat(k);
   g.power     -= game_cost_pow(k);
   if (k == ACT_FRAME) g.workers -= FRAME_WORKERS;   // the crew is spent on the structure
@@ -326,6 +325,7 @@ void game_tick(void) {
     if (rate > b->remaining) rate = b->remaining;
     b->remaining -= rate;
     g.materials += rate;
+    g.extracted += (uint32_t)rate;
     if (g.materials > 9000) g.materials = 9000;
     if (b->remaining == 0) {
       b->rig = false;

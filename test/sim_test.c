@@ -30,32 +30,32 @@ static void policy(void) {
   if (!g.system_scanned) { game_start_action(ACT_SCAN_SYSTEM, 0); return; }
 
   /* Nothing runs without power -- rebuild the array before anything else. */
-  if (g.arrays == 0 && game_affordable(ACT_BUILD_POWER, 0)) { game_start_action(ACT_BUILD_POWER, 0); return; }
+  if (g.arrays == 0 && game_affordable(ACT_BUILD_POWER)) { game_start_action(ACT_BUILD_POWER, 0); return; }
 
   bool have_rig = false;
   for (uint8_t i = 0; i < g.body_count; i++) if (g.bodies[i].rig) have_rig = true;
 
   for (uint8_t i = 0; i < g.body_count; i++) {
     if (g.bodies[i].scanned) continue;
-    if (game_affordable(ACT_SCAN_BODY, i)) { game_start_action(ACT_SCAN_BODY, i); return; }
-    if (g.arrays == 0 && game_affordable(ACT_BUILD_POWER, 0)) { game_start_action(ACT_BUILD_POWER, 0); return; }
+    if (game_affordable(ACT_SCAN_BODY)) { game_start_action(ACT_SCAN_BODY, i); return; }
+    if (g.arrays == 0 && game_affordable(ACT_BUILD_POWER)) { game_start_action(ACT_BUILD_POWER, 0); return; }
     return;                       /* wait for power rather than burn stock */
   }
 
   for (uint8_t i = 0; i < g.body_count; i++) {
     Body *b = &g.bodies[i];
     if (!b->scanned || b->rig || b->remaining <= 0 || b->forfeited) continue;
-    if (game_affordable(ACT_BUILD_RIG, i)) { game_start_action(ACT_BUILD_RIG, i); return; }
+    if (game_affordable(ACT_BUILD_RIG)) { game_start_action(ACT_BUILD_RIG, i); return; }
     if (!have_rig) return;        /* first rig is worth waiting for */
     break;
   }
 
-  if (g.workers < FRAME_WORKERS + RING_WORKERS && game_affordable(ACT_BUILD_WORKER, 0)) { game_start_action(ACT_BUILD_WORKER, 0); return; }
-  if (g.arrays < 3 && game_affordable(ACT_BUILD_POWER, 0))   { game_start_action(ACT_BUILD_POWER, 0); return; }
+  if (g.workers < FRAME_WORKERS + RING_WORKERS && game_affordable(ACT_BUILD_WORKER)) { game_start_action(ACT_BUILD_WORKER, 0); return; }
+  if (g.arrays < 3 && game_affordable(ACT_BUILD_POWER))   { game_start_action(ACT_BUILD_POWER, 0); return; }
   /* Chain order: factories first, since they shorten everything built after. */
-  if (g.factories < RING_FACTORIES && game_affordable(ACT_BUILD_FACTORY, 0)) { game_start_action(ACT_BUILD_FACTORY, 0); return; }
-  if (g.frames < RING_FRAMES && game_affordable(ACT_FRAME, 0)) { game_start_action(ACT_FRAME, 0); return; }
-  if (game_affordable(ACT_RING, 0)) game_start_action(ACT_RING, 0);
+  if (g.factories < RING_FACTORIES && game_affordable(ACT_BUILD_FACTORY)) { game_start_action(ACT_BUILD_FACTORY, 0); return; }
+  if (g.frames < RING_FRAMES && game_affordable(ACT_FRAME)) { game_start_action(ACT_FRAME, 0); return; }
+  if (game_affordable(ACT_RING)) game_start_action(ACT_RING, 0);
 }
 
 uint32_t g_action_cycles, g_idle_cycles;
@@ -249,13 +249,13 @@ static void chain_gate(void) {
   g.materials = 9000; g.power = 500; g.arrays = 3; g.workers = 12;
   g.phase = PHASE_IDLE; g.pending_event = -1;
 
-  assert(!game_affordable(ACT_RING, 0));            /* nothing built yet */
+  assert(!game_affordable(ACT_RING));            /* nothing built yet */
   g.factories = RING_FACTORIES;
-  assert(!game_affordable(ACT_RING, 0));            /* frames still missing */
+  assert(!game_affordable(ACT_RING));            /* frames still missing */
   g.frames = RING_FRAMES;
-  assert(game_affordable(ACT_RING, 0));
+  assert(game_affordable(ACT_RING));
   g.workers = RING_WORKERS - 1;
-  assert(!game_affordable(ACT_RING, 0));            /* crew short */
+  assert(!game_affordable(ACT_RING));            /* crew short */
 
   g.workers = 0; g.factories = 0;
   uint16_t scan0 = game_duration(ACT_SCAN_SYSTEM, 0);

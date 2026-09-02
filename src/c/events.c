@@ -79,6 +79,24 @@ static const EventDef s_defs[EV_COUNT] = {
     { "Reflash the unit", "Retire the unit" }, 2, true, false },
 };
 
+// What each choice costs, one line under it in the panel. Kept apart from the
+// definitions so a def stays readable as header, prose and options.
+static const char *const s_costs[EV_COUNT][3] = {
+  [EV_BIO]          = { "recorded in the ledger", "forfeits the yield", "no yield - they keep growing" },
+  [EV_SPACEFLIGHT]  = { "abandons the body", "recorded in the ledger", "they keep watching" },
+  [EV_INTERFERENCE] = { "-20% materials", "one rig lost" },
+  [EV_STORM]        = { "-1 worker", "an array may be lost" },
+  [EV_RIG_FAULT]    = { "-10% materials", "the rig is lost" },
+  [EV_DEBRIS]       = { "-30% power", "-22% materials" },
+  [EV_CONTACT]      = { "something may answer", "the signal repeats", "-25% power" },
+  [EV_ARRIVAL]      = { "-15% materials - builds rush", "it is still inbound" },
+  [EV_LOSS]         = { "the mission ends here" },
+  [EV_VEIN]         = { "reserve revised upward" },
+  [EV_SEED_DEFECT]  = { "-15% stock" },
+  [EV_DIRECTIVE]    = { "nothing changes" },
+  [EV_DRIFT]        = { "-25% power", "-1 worker" },
+};
+
 // The event on screen lives in GameState so a saved session can resume mid-panel;
 // the panel's rendered text and gated choice list are derived from it.
 static uint8_t s_visible[3];      // definition-choice indices that passed their gate
@@ -87,14 +105,16 @@ static char s_text[200];
 
 // ---- helpers ---------------------------------------------------------------
 
-static int8_t pick_body(bool (*pred)(const Body *)) {
+// A body at random out of the ones still being worked. -1 when there are none:
+// every event that needs a target needs a rig on it.
+static int8_t pick_rigged(void) {
   uint8_t hits[MAX_BODIES], n = 0;
-  for (uint8_t i = 0; i < g.body_count; i++)
-    if (pred(&g.bodies[i])) hits[n++] = i;
+  for (uint8_t i = 0; i < g.body_count; i++) {
+    const Body *b = &g.bodies[i];
+    if (b->rig && b->remaining > 0) hits[n++] = i;
+  }
   return n ? (int8_t)hits[rand() % n] : -1;
 }
-
-static bool has_rig(const Body *b)      { return b->rig && b->remaining > 0; }
 
 // A flat resource hit is a death sentence at seed scale and a rounding error
 // later. Every loss is a fraction of the pool it comes out of, with a floor.
@@ -110,7 +130,7 @@ static bool eligible(uint8_t ev) {
   switch (ev) {
     case EV_STORM:       return g.arrays > 0;
     case EV_RIG_FAULT:
-    case EV_VEIN:        return pick_body(has_rig) >= 0;
+    case EV_VEIN:        return pick_rigged() >= 0;
     case EV_DEBRIS:      return true;
     case EV_CONTACT:     return g.cycle > 260;
     case EV_SEED_DEFECT: return g.cycle < 160;
@@ -211,7 +231,7 @@ bool events_maybe_fire(void) {
   if (ev == EV_STORM && (rand() % 2) == 0) return false;
   int8_t target = 0;
   if (s_defs[ev].needs_body) {
-    target = pick_body(has_rig);
+    target = pick_rigged();
     if (target < 0) return false;
   }
   activate(ev, (uint8_t)target);
@@ -226,6 +246,24 @@ uint8_t events_choice_count(void)   { return g.active_event < 0 ? 0 : s_visible_
 const char *events_choice(uint8_t i) {
   if (g.active_event < 0 || i >= s_visible_n) return "";
   return s_defs[g.active_event].choices[s_visible[i]];
+}
+
+// The consequence line under a choice. Most are fixed text; the biosignature
+// panel is the one where the trade is a number the player can weigh, so it is
+// formatted against the body in question.
+const char *events_choice_cost(uint8_t i) {
+  static char buf[40];
+  if (g.active_event < 0 || i >= s_visible_n) return "";
+  uint8_t c = s_visible[i];
+  if (g.active_event == EV_BIO) {
+    const Body *b = &g.bodies[g.active_target];
+    if (c == 0) snprintf(buf, sizeof(buf), "+%dM - recorded in ledger", 60 + b->yield * 40);
+    else if (c == 1) snprintf(buf, sizeof(buf), "forfeits %d permanently", b->remaining);
+    else snprintf(buf, sizeof(buf), "no yield - %s", life_name(b->life));
+    return buf;
+  }
+  const char *s = s_costs[g.active_event][c];
+  return s ? s : "";
 }
 
 // ---- effects ---------------------------------------------------------------
@@ -244,6 +282,7 @@ static void apply(uint8_t ev, uint8_t c, uint8_t t) {
     case EV_BIO:
       if (c == 0) {
         g.materials += (int16_t)(60 + b->yield * 40); g.harvested_bio++;
+        g.extracted += (uint32_t)(60 + b->yield * 40);
         game_log("T+%lu %s harvested. Emission ceased.", (unsigned long)g.cycle, b->name);
       } else if (c == 1) {
         b->remaining = 0; b->forfeited = true;
@@ -263,6 +302,7 @@ static void apply(uint8_t ev, uint8_t c, uint8_t t) {
         game_log("T+%lu Withdrew from %s.", (unsigned long)g.cycle, b->name);
       } else if (c == 1) {
         g.materials += (int16_t)(50 + b->yield * 30); g.harvested_bio++; b->monitored = false;
+        g.extracted += (uint32_t)(50 + b->yield * 30);
         game_log("T+%lu Orbit of %s cleared.", (unsigned long)g.cycle, b->name);
       } else {
         events_schedule(EV_INTERFERENCE, t, g.cycle + 70);
@@ -275,7 +315,7 @@ static void apply(uint8_t ev, uint8_t c, uint8_t t) {
         g.materials -= bite(g.materials, 20, 15);
         game_log("T+%lu Fabrication net purged.", (unsigned long)g.cycle);
       } else {
-        victim = pick_body(has_rig);
+        victim = pick_rigged();
         if (victim >= 0) g.bodies[victim].rig = false;
         game_log("T+%lu Node isolated. Rig lost.", (unsigned long)g.cycle);
       }

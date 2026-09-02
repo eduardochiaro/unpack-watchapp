@@ -13,11 +13,7 @@
 #define RING_FRAMES    3
 #define RING_FACTORIES 2
 #define MAX_BODIES 5
-#ifdef PBL_PLATFORM_APLITE
-#define LOG_MAX 12   // aplite has 24K for code, data and heap together; the log is
-#else                // the biggest block we can trade back for working memory
 #define LOG_MAX 30
-#endif
 #define LOG_LEN 56
 
 typedef enum { BT_ASTEROID, BT_MOON, BT_PLANET, BT_ANOMALY } BodyType;
@@ -61,6 +57,7 @@ typedef enum { END_NONE, END_DEPART, END_COLLAPSE, END_SUDDEN } EndKind;
 typedef struct {
   int16_t power, materials, workers;
   uint8_t arrays, factories, frames;
+  uint32_t extracted;      // running total pulled out of the system, for the ledger
 
   Body bodies[MAX_BODIES];
   uint8_t body_count;
@@ -111,7 +108,7 @@ void game_log_line(const char *s);
 void game_tick(void);
 void game_end(EndKind kind);
 
-bool game_affordable(ActionKind k, uint8_t target);
+bool game_affordable(ActionKind k);
 int16_t game_cost_mat(ActionKind k);
 int16_t game_cost_pow(ActionKind k);
 uint16_t game_duration(ActionKind k, uint8_t target);

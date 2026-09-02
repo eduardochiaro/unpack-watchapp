@@ -10,11 +10,6 @@ that have no clean answer, and the clock never stops for them. A run takes 2-4
 minutes, start to departure or failure. Runs entirely on the watch, no phone.
 
 ## Screenshots
-### Pebble Classic/Steel
-![Aplite 1](assets/aplite_1.png)
-![Aplite 2](assets/aplite_2.png)
-![Aplite 3](assets/aplite_3.png)
-
 ### Pebble 2/Duo
 ![Flint 1](assets/flint_1.png)
 ![Flint 2](assets/flint_2.png)

@@ -9,17 +9,22 @@ M - materials. Mined mass. Pays for every build.
 W - workers. Each one shortens every action; 12 is as far as that goes.
 T+n yr - mission clock. It runs whether or not you act.
 The bar fills while an action runs. One action at a time.
+FAC/FRM/RING under the band is the construction chain: how many
+factories and frames stand, and whether the ring is still locked.
 On an ops row, "80c" is what the action costs in cycles, and
-"short" means you cannot pay for it yet.
+"needs 30M" is exactly what you are short by.
 
 SYSTEM
 The bodies the survey found. Each row is name, type, state.
 unscanned - scan it to learn the yield.
-dist low/med/high - far bodies cost more time to scan and to rig.
-low/med/high yield - how fast a rig pulls M out. The number is M left.
+near/mid/far - far bodies cost more time to scan and to rig.
+low/med/high yield - how fast a rig pulls M out. The three squares
+on the right are the same tier; the number under them is M left.
 BIO - life down there. Mining it is a decision, not a formality.
-RIG - a rig is working the body. It draws 1 P per cycle.
-MONITORED - left alone and watched.
+rig - a rig is working the body. It draws 1 P per cycle. The bar
+down the left of a row is green while it runs, amber if the body is
+flagged, and marks the selected row.
+monitored - left alone and watched.
 depleted - empty. The rig comes back.
 left intact - you gave it up.
 
@@ -31,11 +36,12 @@ Worker unit - +1 W.
 Mining rig - select a scanned body to build one. It converts the body to M.
 Factory - shortens every later build. Scans are unaffected.
 Colony frame - orbital anchor. Needs 2 W, built into it. 3 needed.
-Orbital ring - the goal. Needs 3 frames, 2 factories and 3 W.
-short - you cannot pay for it yet.
+Orbital ring - the goal. Needs 3 frames, 2 factories and 3 W. Until
+they stand the row says "locked" and what is missing.
 
 EVENTS
-Interruptions with choices. Nothing is timed, but the choice is permanent.
+Interruptions with choices. Nothing is timed, but the choice is
+permanent. Every choice states its consequence before you confirm it.
 
 ENDINGS
 Close the ring and the probe departs. That is the good ending.
