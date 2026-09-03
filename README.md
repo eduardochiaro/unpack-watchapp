@@ -36,8 +36,8 @@ minutes, start to departure or failure.
 ![Gabbro 3](assets/gabbro_3.png)
 
 ## Store
-[Rebble App Store](https://apps.rebble.io/en_US/application/)
-[Pebble App Store](https://apps.repebble.com/)
+[Rebble App Store](https://apps.rebble.io/en_US/application/6a98f3c7039ea900095fe2da)
+[Pebble App Store](https://apps.repebble.com/6a98f3c7039ea900095fe2da)
 
 ## License
 MIT License - feel free to modify and share!
