@@ -307,6 +307,88 @@
           ]
         },
         {
+          "type": "bitmap",
+          "name": "ART_EV_ALERT",
+          "file": "art/ev-alert-small.png",
+          "targetPlatforms": [
+            "basalt",
+            "chalk",
+            "diorite",
+            "flint"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "ART_EV_ALERT",
+          "file": "art/ev-alert.png",
+          "targetPlatforms": [
+            "emery",
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "ART_EV_STELLAR",
+          "file": "art/ev-stellar-small.png",
+          "targetPlatforms": [
+            "basalt",
+            "chalk",
+            "diorite",
+            "flint"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "ART_EV_STELLAR",
+          "file": "art/ev-stellar.png",
+          "targetPlatforms": [
+            "emery",
+            "gabbro"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "ART_EV_TERM",
+          "file": "art/ev-term-small.png",
+          "targetPlatforms": [
+            "basalt",
+            "chalk",
+            "diorite",
+            "flint"
+          ]
+        },
+        {
+          "type": "bitmap",
+          "name": "ART_EV_TERM",
+          "file": "art/ev-term.png",
+          "targetPlatforms": [
+            "emery",
+            "gabbro"
+          ]
+        },
+        {
+          "type": "font",
+          "name": "FONT_SILK_8",
+          "file": "fonts/Silkscreen-Regular.ttf",
+          "characterRegex": "[A-Z0-9 .+/%…-]"
+        },
+        {
+          "type": "font",
+          "name": "FONT_SILK_16",
+          "file": "fonts/Silkscreen-Regular.ttf",
+          "characterRegex": "[A-Z0-9 .+/%…-]"
+        },
+        {
+          "type": "font",
+          "name": "FONT_SILK_24",
+          "file": "fonts/Silkscreen-Regular.ttf",
+          "characterRegex": "[A-Z0-9 .+/%…-]",
+          "targetPlatforms": [
+            "emery",
+            "gabbro"
+          ]
+        },
+        {
           "type": "raw",
           "name": "GUIDE",
           "file": "guide.txt"

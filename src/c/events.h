@@ -18,11 +18,14 @@ enum {
   EV_COUNT
 };
 
+enum { EV_ICON_ALERT = 0, EV_ICON_STELLAR, EV_ICON_TERM };
+
 void events_schedule(uint8_t ev, uint8_t target, uint32_t at);
 bool events_maybe_fire(void);          // sets g.phase = PHASE_EVENT when one fires
 int8_t events_active(void);
 void events_reactivate(void);   // rebuild the panel after loading a saved session
 const char *events_header(void);
+uint8_t events_icon(void);      // which mark the header bar carries
 const char *events_text(void);
 uint8_t events_choice_count(void);
 const char *events_choice(uint8_t i);

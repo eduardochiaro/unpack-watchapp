@@ -50,13 +50,13 @@
 // The "UNPACK" band above the splash art. Wide screens have the room for a
 // bigger face, so they get one and a taller band to sit in.
 #if PBL_DISPLAY_WIDTH >= 200
-#define TITLE_FONT    FONT_KEY_GOTHIC_24_BOLD
 #define TITLE_H       34
 #define TITLE_PAD      6
+#define TITLE_DY      -2     // Silkscreen's caps centred in the band
 #else
-#define TITLE_FONT    FONT_KEY_GOTHIC_14_BOLD
 #define TITLE_H       21
 #define TITLE_PAD      4
+#define TITLE_DY      -1
 #endif
 
 static Window *s_menu_window, *s_main_window, *s_event_window, *s_ledger_window;
@@ -84,7 +84,25 @@ static uint8_t s_event_sel;
 static uint32_t s_struct_sig;
 static char s_ledger[LOG_MAX * (LOG_LEN + 1) + 8];
 
-static GFont s_f14, s_f14b, s_title_font, s_fevent, s_feventb;
+static GFont s_f14, s_f14b, s_fevent;
+// Silkscreen, rasterised from the TTF at build time. It only renders cleanly at
+// multiples of its 8px design grid, so the three sizes are 8, 16 and 24 and the
+// bands pick from those rather than from whatever height would have fitted.
+static GFont s_silk8, s_silk16;
+#if PBL_DISPLAY_WIDTH >= 200
+static GFont s_silk24;
+#define SILK_TITLE  s_silk24
+#define SILK_BAR    s_silk16
+#else
+#define SILK_TITLE  s_silk16
+#define SILK_BAR    s_silk8
+#endif
+#define SILK_HDR    s_silk8   // the widest header has to clear the frozen clock
+#if PBL_DISPLAY_WIDTH >= 200
+#define BAR_DY        -3      // Silkscreen 16's caps centred in a 16px bar
+#else
+#define BAR_DY         1      // Silkscreen 8's
+#endif
 
 // The OPS list, in order. The system survey is the only row that ever leaves:
 // once it has run there is nothing to survey, so the list is read from index 1.
@@ -283,7 +301,7 @@ static void draw_header(GContext *ctx, const Layer *cell, const char *text, cons
   graphics_fill_rect(ctx, b, 0, GCornerNone);
 #endif
   graphics_context_set_text_color(ctx, col_fg());
-  graphics_draw_text(ctx, text, s_f14b, GRect(3, -3, b.size.w - 6, 18),
+  graphics_draw_text(ctx, text, SILK_BAR, GRect(3, BAR_DY, b.size.w - 6, 21),
                      GTextOverflowModeTrailingEllipsis,
                      PBL_IF_ROUND_ELSE(GTextAlignmentCenter, GTextAlignmentLeft), NULL);
 #ifndef PBL_ROUND
@@ -753,24 +771,24 @@ static void menu_select(MenuLayer *m, MenuIndex *idx, void *c) {
 #define CHOICE_SUB     1
 #define CHOICE_BOT    PBL_IF_ROUND_ELSE(26, 4)
 #define EVENT_FONT    FONT_KEY_GOTHIC_18
-#define EVENT_FONT_B  FONT_KEY_GOTHIC_18_BOLD
 #define EVENT_HDR_H   24     // the header bar has to hold the bigger face
-#define EVENT_YR_DY    3     // Gothic 14's baseline down onto Gothic 18's
+#define EVENT_YR_DY    3     // Gothic 14's baseline down onto the bar's centre
+#define EVENT_HDR_DY   7     // Silkscreen 8's caps centred in that bar
+#define EVENT_MARK    16     // the bar's mark, in place of the old emoji
 #define EVENT_RESP    13     // the RESPONSE label over the choice stack
 #define EVENT_ART      1
-#define EVENT_EMOJI    1     // Gothic 18 carries the emoji block; Gothic 14 does not
 #else
 #define CHOICE_H      17
 #define CHOICE_DY     -3
 #define CHOICE_SUB     0
 #define CHOICE_BOT     2
 #define EVENT_FONT    FONT_KEY_GOTHIC_14
-#define EVENT_FONT_B  FONT_KEY_GOTHIC_14_BOLD
 #define EVENT_HDR_H   18
-#define EVENT_YR_DY    0     // bar and clock are the same face here
+#define EVENT_YR_DY    0
+#define EVENT_HDR_DY   4
+#define EVENT_MARK     8
 #define EVENT_RESP     0
 #define EVENT_ART      0
-#define EVENT_EMOJI    0
 #endif
 
 // The shared consequence line, on the screens too narrow for one per choice.
@@ -794,6 +812,17 @@ static void menu_select(MenuLayer *m, MenuIndex *idx, void *c) {
 // Drawing and the touch hit-test both start from here, so they cannot drift.
 static int16_t choices_top(int16_t h, uint8_t n) {
   return h - n * CHOICE_H - CHOICE_BOT - EVENT_FOOT;
+}
+
+// The header bar's mark, resident only while the panel is up.
+static GBitmap *s_ev_mark;
+
+static uint32_t event_mark_id(void) {
+  switch (events_icon()) {
+    case EV_ICON_STELLAR: return RESOURCE_ID_ART_EV_STELLAR;
+    case EV_ICON_TERM:    return RESOURCE_ID_ART_EV_TERM;
+    default:              return RESOURCE_ID_ART_EV_ALERT;
+  }
 }
 
 #if EVENT_ART
@@ -835,16 +864,22 @@ static void event_update(Layer *layer, GContext *ctx) {
   graphics_context_set_fill_color(ctx, col_alert());
   graphics_fill_rect(ctx, hb, 0, GCornerNone);
   graphics_context_set_text_color(ctx, GColorBlack);
-  // Only the Gothic 18 and 24 faces carry emoji glyphs, so on the screens whose
-  // header bar is Gothic 14 the leading emoji is dropped rather than drawn as a
-  // hole. The name is what the bar is for.
-  const char *hdr = events_header();
-#if !EVENT_EMOJI
-  const char *sp = ((uint8_t)hdr[0] >= 0x80) ? strchr(hdr, ' ') : NULL;
-  if (sp) hdr = sp + 1;
-#endif
-  graphics_draw_text(ctx, hdr, s_feventb,
-                     GRect(hb.origin.x + 3, hb.origin.y, hb.size.w - 6, hb.size.h),
+  // The mark the headers used to carry as an emoji. It is a bitmap now: no
+  // Silkscreen size has the emoji block. It is black on transparent and drawn
+  // GCompOpSet -- the bitmaps are palettised on every platform, including the
+  // black-and-white ones, and GCompOpAnd does not read a palette's alpha.
+  if (s_ev_mark) {
+    graphics_context_set_compositing_mode(ctx, GCompOpSet);
+    graphics_draw_bitmap_in_rect(ctx, s_ev_mark,
+                                 GRect(hb.origin.x + 3,
+                                       hb.origin.y + (EVENT_HDR_H - EVENT_MARK) / 2,
+                                       EVENT_MARK, EVENT_MARK));
+    graphics_context_set_compositing_mode(ctx, GCompOpAssign);
+  }
+  // The name stops short of the frozen clock rather than running under it.
+  graphics_draw_text(ctx, events_header(), SILK_HDR,
+                     GRect(hb.origin.x + 6 + EVENT_MARK, hb.origin.y + EVENT_HDR_DY,
+                           hb.size.w - 9 - EVENT_MARK - PBL_IF_ROUND_ELSE(0, 54), 11),
                      GTextOverflowModeTrailingEllipsis,
                      PBL_IF_ROUND_ELSE(GTextAlignmentCenter, GTextAlignmentLeft), NULL);
 #ifndef PBL_ROUND
@@ -1022,6 +1057,7 @@ static void event_clicks(void *c) {
 
 static void event_load(Window *w) {
   Layer *root = window_get_root_layer(w);
+  s_ev_mark = gbitmap_create_with_resource(event_mark_id());  // NULL is drawn as no mark
 #if EVENT_ART
   s_ev_art = gbitmap_create_with_resource(event_art_id());   // NULL is drawn as no icon
 #endif
@@ -1039,6 +1075,7 @@ static void event_load(Window *w) {
 
 static void event_unload(Window *w) {
   layer_destroy(s_event_layer);
+  if (s_ev_mark) { gbitmap_destroy(s_ev_mark); s_ev_mark = NULL; }
 #if EVENT_ART
   if (s_ev_art) { gbitmap_destroy(s_ev_art); s_ev_art = NULL; }
 #endif
@@ -1103,7 +1140,7 @@ static void ledger_head_update(Layer *l, GContext *ctx) {
   graphics_context_set_fill_color(ctx, bar);
   graphics_fill_rect(ctx, GRect(0, 0, b.size.w, LED_BAR_H), 0, GCornerNone);
   graphics_context_set_text_color(ctx, ink);
-  graphics_draw_text(ctx, cause, s_f14b, GRect(4, -1, b.size.w - 8, 18),
+  graphics_draw_text(ctx, cause, SILK_BAR, GRect(4, BAR_DY, b.size.w - 8, 21),
                      GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
   snprintf(buf, sizeof(buf), "T+%luyr", (unsigned long)g.cycle);
   graphics_draw_text(ctx, buf, s_f14, GRect(4, -1, b.size.w - 8, 18),
@@ -1368,8 +1405,8 @@ static void masthead_update(Layer *l, GContext *ctx) {
   // Drawn here rather than through draw_header: this title has its own font and
   // padding, and the in-game headers must keep theirs.
   graphics_context_set_text_color(ctx, col_accent());
-  graphics_draw_text(ctx, "UNPACK", s_title_font,
-                     GRect(3, TITLE_PAD - 3, b.size.w - 6, TITLE_H),
+  graphics_draw_text(ctx, "UNPACK", SILK_TITLE,
+                     GRect(3, TITLE_PAD - 3 + TITLE_DY, b.size.w - 6, TITLE_H),
                      GTextOverflowModeTrailingEllipsis,
                      PBL_IF_ROUND_ELSE(GTextAlignmentCenter, GTextAlignmentLeft), NULL);
 
@@ -1473,9 +1510,12 @@ static void root_unload(Window *w) {
 void ui_init(void) {
   s_f14  = fonts_get_system_font(FONT_KEY_GOTHIC_14);
   s_f14b = fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD);
-  s_title_font = fonts_get_system_font(TITLE_FONT);
   s_fevent  = fonts_get_system_font(EVENT_FONT);
-  s_feventb = fonts_get_system_font(EVENT_FONT_B);
+  s_silk8  = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_SILK_8));
+  s_silk16 = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_SILK_16));
+#if PBL_DISPLAY_WIDTH >= 200
+  s_silk24 = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_SILK_24));
+#endif
 
   s_has_save = session_load();
 
@@ -1518,4 +1558,9 @@ void ui_deinit(void) {
   window_destroy(s_event_window);
   window_destroy(s_main_window);
   window_destroy(s_menu_window);
+  fonts_unload_custom_font(s_silk8);
+  fonts_unload_custom_font(s_silk16);
+#if PBL_DISPLAY_WIDTH >= 200
+  fonts_unload_custom_font(s_silk24);
+#endif
 }

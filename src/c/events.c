@@ -12,69 +12,69 @@ typedef struct {
 
 static const EventDef s_defs[EV_COUNT] = {
   [EV_BIO] = {
-    "\u2757 BIOSIGNATURE",
+    "BIOSIGNATURE",
     // Two substitutions: body name, then the stage readout. rebuild_panel
     // special-cases this one -- every other def takes the name alone.
     "Secondary scan of %s returns a biological signal. %s",
     { "Harvest anyway", "Leave the body", "Monitor and continue" }, 3, false, true },
 
   [EV_SPACEFLIGHT] = {
-    "\u2757 ORBITAL ACTIVITY",
+    "ORBITAL ACTIVITY",
     "%s has reached orbit. Their instruments are pointed at our infrastructure.",
     { "Withdraw", "Clear the orbit", "Hold position" }, 3, false, true },
 
   [EV_INTERFERENCE] = {
-    "\u2757 SYSTEM INTRUSION",
+    "SYSTEM INTRUSION",
     "A foreign process is inside our fabrication net. Origin traces to the monitored body.",
     { "Purge and rebuild", "Isolate the node" }, 2, false, false },
 
   [EV_STORM] = {
-    "\u2728 STELLAR EVENT",
+    "STELLAR EVENT",
     "Coronal mass ejection inbound. Power arrays are exposed.",
     { "Shield with workers", "Absorb the strike" }, 2, true, false },
 
   [EV_RIG_FAULT] = {
-    "\u2757 RIG FAULT",
+    "RIG FAULT",
     "Extraction assembly on %s has seized. Output has stopped.",
     { "Divert workers", "Write it off" }, 2, true, true },
 
   [EV_DEBRIS] = {
-    "\u2757 DEBRIS FIELD",
+    "DEBRIS FIELD",
     "Uncharted debris is crossing our operational plane. Impacts are likely.",
     { "Evasive burn", "Take the impacts" }, 2, true, false },
 
   [EV_CONTACT] = {
-    "\u2728 EXTERNAL CONTACT",
+    "EXTERNAL CONTACT",
     "Narrowband transmission from outside the system. Structured. Not ours.",
     { "Reply", "Stay silent", "Analyse only" }, 3, false, false },
 
   [EV_ARRIVAL] = {
-    "\u2757 INBOUND",
+    "INBOUND",
     "Something answered the reply. It is decelerating into the system.",
     { "Divert all to the ring", "Hold and build" }, 2, false, false },
 
   [EV_LOSS] = {
-    "\u274E TERMINATION",
+    "TERMINATION",
     "Infrastructure is being disassembled by something that is not us.",
     { "Log the event" }, 1, false, false },
 
   [EV_VEIN] = {
-    "\u2757 YIELD REVISION",
+    "YIELD REVISION",
     "Deep survey of %s revises the reserve estimate upward.",
     { "Acknowledge" }, 1, true, true },
 
   [EV_SEED_DEFECT] = {
-    "\u2757 PAYLOAD FAULT",
+    "PAYLOAD FAULT",
     "Seed payload container failed inspection. Part of the stock is unusable.",
     { "Recover what is intact" }, 1, false, false },
 
   [EV_DIRECTIVE] = {
-    "\u2757 DIRECTIVE CHECK",
+    "DIRECTIVE CHECK",
     "Routine self-audit. The directive is unchanged. No sender response is on record.",
     { "Continue" }, 1, false, false },
 
   [EV_DRIFT] = {
-    "\u2757 UNIT DRIFT",
+    "UNIT DRIFT",
     "Worker firmware has diverged from spec. Output is unpredictable.",
     { "Reflash the unit", "Retire the unit" }, 2, true, false },
 };
@@ -240,6 +240,17 @@ bool events_maybe_fire(void) {
 
 int8_t events_active(void)          { return g.active_event; }
 const char *events_header(void)     { return g.active_event < 0 ? "" : s_defs[g.active_event].header; }
+
+// The mark on the header bar. It replaces the emoji the headers used to carry:
+// only the Gothic 18 and 24 faces had those glyphs, and the bar is Silkscreen now.
+uint8_t events_icon(void) {
+  switch (g.active_event) {
+    case EV_STORM:
+    case EV_CONTACT: return EV_ICON_STELLAR;
+    case EV_LOSS:    return EV_ICON_TERM;
+    default:         return EV_ICON_ALERT;
+  }
+}
 const char *events_text(void)       { return g.active_event < 0 ? "" : s_text; }
 uint8_t events_choice_count(void)   { return g.active_event < 0 ? 0 : s_visible_n; }
 
