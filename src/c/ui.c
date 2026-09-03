@@ -755,9 +755,10 @@ static void menu_select(MenuLayer *m, MenuIndex *idx, void *c) {
 #define EVENT_FONT    FONT_KEY_GOTHIC_18
 #define EVENT_FONT_B  FONT_KEY_GOTHIC_18_BOLD
 #define EVENT_HDR_H   24     // the header bar has to hold the bigger face
-#define EVENT_YR_DY    5     // Gothic 14's baseline down onto Gothic 18's
+#define EVENT_YR_DY    3     // Gothic 14's baseline down onto Gothic 18's
 #define EVENT_RESP    13     // the RESPONSE label over the choice stack
 #define EVENT_ART      1
+#define EVENT_EMOJI    1     // Gothic 18 carries the emoji block; Gothic 14 does not
 #else
 #define CHOICE_H      17
 #define CHOICE_DY     -3
@@ -769,6 +770,7 @@ static void menu_select(MenuLayer *m, MenuIndex *idx, void *c) {
 #define EVENT_YR_DY    0     // bar and clock are the same face here
 #define EVENT_RESP     0
 #define EVENT_ART      0
+#define EVENT_EMOJI    0
 #endif
 
 // The shared consequence line, on the screens too narrow for one per choice.
@@ -833,7 +835,15 @@ static void event_update(Layer *layer, GContext *ctx) {
   graphics_context_set_fill_color(ctx, col_alert());
   graphics_fill_rect(ctx, hb, 0, GCornerNone);
   graphics_context_set_text_color(ctx, GColorBlack);
-  graphics_draw_text(ctx, events_header(), s_feventb,
+  // Only the Gothic 18 and 24 faces carry emoji glyphs, so on the screens whose
+  // header bar is Gothic 14 the leading emoji is dropped rather than drawn as a
+  // hole. The name is what the bar is for.
+  const char *hdr = events_header();
+#if !EVENT_EMOJI
+  const char *sp = ((uint8_t)hdr[0] >= 0x80) ? strchr(hdr, ' ') : NULL;
+  if (sp) hdr = sp + 1;
+#endif
+  graphics_draw_text(ctx, hdr, s_feventb,
                      GRect(hb.origin.x + 3, hb.origin.y, hb.size.w - 6, hb.size.h),
                      GTextOverflowModeTrailingEllipsis,
                      PBL_IF_ROUND_ELSE(GTextAlignmentCenter, GTextAlignmentLeft), NULL);
@@ -1093,10 +1103,10 @@ static void ledger_head_update(Layer *l, GContext *ctx) {
   graphics_context_set_fill_color(ctx, bar);
   graphics_fill_rect(ctx, GRect(0, 0, b.size.w, LED_BAR_H), 0, GCornerNone);
   graphics_context_set_text_color(ctx, ink);
-  graphics_draw_text(ctx, cause, s_f14b, GRect(4, -3, b.size.w - 8, 18),
+  graphics_draw_text(ctx, cause, s_f14b, GRect(4, -1, b.size.w - 8, 18),
                      GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
   snprintf(buf, sizeof(buf), "T+%luyr", (unsigned long)g.cycle);
-  graphics_draw_text(ctx, buf, s_f14, GRect(4, -3, b.size.w - 8, 18),
+  graphics_draw_text(ctx, buf, s_f14, GRect(4, -1, b.size.w - 8, 18),
                      GTextOverflowModeTrailingEllipsis, GTextAlignmentRight, NULL);
 
   snprintf(built, sizeof(built), "%dF %dFR%s", g.factories, g.frames,

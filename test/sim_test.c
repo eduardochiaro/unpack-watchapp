@@ -291,8 +291,8 @@ static void storm_rate(void) {
     g.pending_event = -1;
     if (!events_maybe_fire()) continue;
 
-    if (strcmp(events_header(), "STELLAR EVENT") == 0) storms++;
-    else if (strcmp(events_header(), "DEBRIS FIELD") == 0) debris++;
+    if (strstr(events_header(), "STELLAR EVENT")) storms++;
+    else if (strstr(events_header(), "DEBRIS FIELD")) debris++;
     else assert(0);             /* nothing else may be eligible in this state */
   }
 

@@ -12,69 +12,69 @@ typedef struct {
 
 static const EventDef s_defs[EV_COUNT] = {
   [EV_BIO] = {
-    "BIOSIGNATURE",
+    "\u2757 BIOSIGNATURE",
     // Two substitutions: body name, then the stage readout. rebuild_panel
     // special-cases this one -- every other def takes the name alone.
     "Secondary scan of %s returns a biological signal. %s",
     { "Harvest anyway", "Leave the body", "Monitor and continue" }, 3, false, true },
 
   [EV_SPACEFLIGHT] = {
-    "ORBITAL ACTIVITY",
+    "\u2757 ORBITAL ACTIVITY",
     "%s has reached orbit. Their instruments are pointed at our infrastructure.",
     { "Withdraw", "Clear the orbit", "Hold position" }, 3, false, true },
 
   [EV_INTERFERENCE] = {
-    "SYSTEM INTRUSION",
+    "\u2757 SYSTEM INTRUSION",
     "A foreign process is inside our fabrication net. Origin traces to the monitored body.",
     { "Purge and rebuild", "Isolate the node" }, 2, false, false },
 
   [EV_STORM] = {
-    "STELLAR EVENT",
+    "\u2728 STELLAR EVENT",
     "Coronal mass ejection inbound. Power arrays are exposed.",
     { "Shield with workers", "Absorb the strike" }, 2, true, false },
 
   [EV_RIG_FAULT] = {
-    "RIG FAULT",
+    "\u2757 RIG FAULT",
     "Extraction assembly on %s has seized. Output has stopped.",
     { "Divert workers", "Write it off" }, 2, true, true },
 
   [EV_DEBRIS] = {
-    "DEBRIS FIELD",
+    "\u2757 DEBRIS FIELD",
     "Uncharted debris is crossing our operational plane. Impacts are likely.",
     { "Evasive burn", "Take the impacts" }, 2, true, false },
 
   [EV_CONTACT] = {
-    "EXTERNAL CONTACT",
+    "\u2728 EXTERNAL CONTACT",
     "Narrowband transmission from outside the system. Structured. Not ours.",
     { "Reply", "Stay silent", "Analyse only" }, 3, false, false },
 
   [EV_ARRIVAL] = {
-    "INBOUND",
+    "\u2757 INBOUND",
     "Something answered the reply. It is decelerating into the system.",
     { "Divert all to the ring", "Hold and build" }, 2, false, false },
 
   [EV_LOSS] = {
-    "TERMINATION",
+    "\u274E TERMINATION",
     "Infrastructure is being disassembled by something that is not us.",
     { "Log the event" }, 1, false, false },
 
   [EV_VEIN] = {
-    "YIELD REVISION",
+    "\u2757 YIELD REVISION",
     "Deep survey of %s revises the reserve estimate upward.",
     { "Acknowledge" }, 1, true, true },
 
   [EV_SEED_DEFECT] = {
-    "PAYLOAD FAULT",
+    "\u2757 PAYLOAD FAULT",
     "Seed payload container failed inspection. Part of the stock is unusable.",
     { "Recover what is intact" }, 1, false, false },
 
   [EV_DIRECTIVE] = {
-    "DIRECTIVE CHECK",
+    "\u2757 DIRECTIVE CHECK",
     "Routine self-audit. The directive is unchanged. No sender response is on record.",
     { "Continue" }, 1, false, false },
 
   [EV_DRIFT] = {
-    "UNIT DRIFT",
+    "\u2757 UNIT DRIFT",
     "Worker firmware has diverged from spec. Output is unpredictable.",
     { "Reflash the unit", "Retire the unit" }, 2, true, false },
 };
